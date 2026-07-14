@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin.json",
+  "name": "flutter-kit",
+  "version": "0.1.0",
+  "description": "Flutter/Dart expertise: best-practices, Patrol E2E, thin-client conventions, flutter-expert agent.",
+  "author": { "name": "Oleg Shmyk", "email": "aleh.shmyk@gmail.com" },
+  "keywords": ["flutter", "dart", "patrol", "mobile"]
+}

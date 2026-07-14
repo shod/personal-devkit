@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "personal-devkit",
+  "owner": {
+    "name": "Oleg Shmyk"
+  },
+  "metadata": {
+    "description": "Oleg's personal Claude Code toolkit. One marketplace, several kits. Single source of truth; consumed by any project.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "workflow-kit",
+      "source": "./plugins/workflow-kit",
+      "description": "Framework-agnostic workflow: graphify, task-runner, phase-runner, spec-kit overlay, time-log, squash-commits."
+    },
+    {
+      "name": "laravel-kit",
+      "source": "./plugins/laravel-kit",
+      "description": "Laravel expertise: best-practices, Horizon config, Pint, larastan. Reusable across Laravel projects."
+    },
+    {
+      "name": "flutter-kit",
+      "source": "./plugins/flutter-kit",
+      "description": "Flutter expertise: best-practices, Patrol E2E, flutter-expert agent. For Flutter frontends."
+    }
+  ]
+}

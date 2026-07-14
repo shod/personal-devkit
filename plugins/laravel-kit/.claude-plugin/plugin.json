@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin.json",
+  "name": "laravel-kit",
+  "version": "0.1.0",
+  "description": "Laravel best-practices, Horizon configuration, Pint, larastan (PHPStan) skills. Reusable across Laravel backends.",
+  "author": { "name": "Oleg Shmyk", "email": "aleh.shmyk@gmail.com" },
+  "keywords": ["laravel", "php", "horizon", "pint", "phpstan"]
+}
