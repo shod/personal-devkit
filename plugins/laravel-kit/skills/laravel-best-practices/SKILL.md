@@ -176,6 +176,7 @@ Check sibling files, related controllers, models, or tests for established patte
 
 ### 19. Conventions & Style → `rules/style.md`
 
+- Every PHP file must start with `declare(strict_types=1);`
 - Follow Laravel naming conventions for all entities
 - Prefer Laravel helpers (`Str`, `Arr`, `Number`, `Uri`, `Str::of()`, `$request->string()`) over raw PHP functions
 - No JS/CSS in Blade, no HTML in PHP classes

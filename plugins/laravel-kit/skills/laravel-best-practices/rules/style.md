@@ -1,5 +1,37 @@
 # Conventions & Style
 
+## Always Declare Strict Types
+
+Every PHP file must begin with `declare(strict_types=1);` immediately after the opening `<?php` tag. This is mandatory — it enforces strict type checking on scalar type hints, turning silent type coercion into explicit `TypeError`s and catching bugs early.
+
+Incorrect:
+```php
+<?php
+
+namespace App\Services;
+
+class ArticleService
+{
+    // ...
+}
+```
+
+Correct:
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services;
+
+class ArticleService
+{
+    // ...
+}
+```
+
+Applies to all PHP files: controllers, models, services, actions, form requests, jobs, migrations, tests, config-adjacent classes — everything.
+
 ## Follow Laravel Naming Conventions
 
 | What | Convention | Good | Bad |
