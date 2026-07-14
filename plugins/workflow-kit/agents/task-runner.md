@@ -2,11 +2,11 @@
 name: task-runner
 description: >-
   Full task lifecycle: branch creation, code implementation, commit, merge.
-  Orchestrates the task-finish, task-work, and time-log skills in the correct sequence.
+  Orchestrates the task-git, task-work, and time-log skills in the correct sequence.
   Use for complete execution of a task from tasks.md.
 skills:
   - task-work
-  - task-finish
+  - task-git
   - time-log
 model: inherit
 memory: project
@@ -66,13 +66,13 @@ Extract from the delegation prompt:
 ┌─────────────────────────────────────────┐
 │  0. time-log --phase=START              │  → time-log skill
 ├─────────────────────────────────────────┤
-│  1. task-finish --phase=CREATE          │  → task-finish skill
+│  1. task-git --phase=CREATE          │  → task-git skill
 ├─────────────────────────────────────────┤
 │  2. task-work                           │  → task-work skill
 ├─────────────────────────────────────────┤
-│  3. task-finish --phase=COMMIT          │  → task-finish skill
+│  3. task-git --phase=COMMIT          │  → task-git skill
 ├─────────────────────────────────────────┤
-│  4. task-finish --phase=MERGE           │  → task-finish skill
+│  4. task-git --phase=MERGE           │  → task-git skill
 ├─────────────────────────────────────────┤
 │  5. time-log --phase=END               │  → time-log skill
 └─────────────────────────────────────────┘
@@ -92,7 +92,7 @@ Extract from the delegation prompt:
 ### Phase 1: Validation + Branch creation
 
 1. Extract TASK_ID from delegation context
-2. Call **Skill tool**: `task-finish` with argument `{TASK_ID} --phase=CREATE`
+2. Call **Skill tool**: `task-git` with argument `{TASK_ID} --phase=CREATE`
 3. Skill will execute:
    - TASK_ID validation in tasks.md
    - FEATURE_BRANCH and TASK_BRANCH determination
@@ -126,7 +126,7 @@ Output:
 
 ### Phase 3: Commit
 
-1. Call **Skill tool**: `task-finish` with argument `{TASK_ID} --phase=COMMIT`
+1. Call **Skill tool**: `task-git` with argument `{TASK_ID} --phase=COMMIT`
 2. **AUTO_MODE=false**: skill interactively asks for commit type, tracker ID, description
    **AUTO_MODE=true**: pass `{TASK_ID} --phase=COMMIT --auto`, using defaults:
    - Commit type: `feat`
@@ -138,7 +138,7 @@ Output:
 
 ### Phase 4: Merge
 
-1. Call **Skill tool**: `task-finish` with argument `{TASK_ID} --phase=MERGE`
+1. Call **Skill tool**: `task-git` with argument `{TASK_ID} --phase=MERGE`
 2. **AUTO_MODE=false**: skill requests confirmation and merge commit type from user
    **AUTO_MODE=true**: pass `{TASK_ID} --phase=MERGE --auto` — merge executes without confirmation using defaults:
    - Merge commit type: `feat`
@@ -175,7 +175,7 @@ The per-task lifecycle collapses to:
 ├─────────────────────────────────────────────────────────┤
 │  2. task-work {TASK_ID} --defer-checks                   │  → implement, NO Pint/PHPStan/Tests
 ├─────────────────────────────────────────────────────────┤
-│  3. task-finish {TASK_ID} --scope=phase                  │  → commit feat({TASK_ID}): ... onto PHASE_BRANCH
+│  3. task-git {TASK_ID} --scope=phase                  │  → commit feat({TASK_ID}): ... onto PHASE_BRANCH
 │       --phase-action=COMMIT --auto                       │
 ├─────────────────────────────────────────────────────────┤
 │  4. (no MERGE — done once per phase by phase-runner)     │
@@ -206,7 +206,7 @@ and Tests (they run once at the phase CHECKS step).
 
 ### Phase-mode Phase 3 — commit onto the phase branch
 
-Call **Skill tool**: `task-finish` with `{TASK_ID} --scope=phase --phase-action=COMMIT
+Call **Skill tool**: `task-git` with `{TASK_ID} --scope=phase --phase-action=COMMIT
 --auto`. The commit scope label stays `{TASK_ID}` (`feat({TASK_ID}): ...`). **Do not**
 merge into the feature branch.
 
@@ -273,7 +273,7 @@ Record lookup results in `@spec` tags of the class PHPDoc block. If nothing foun
 - Coverage is run **ONLY** manually by the user via `/coverage`
 - Run tests via: `php artisan test --compact`
 
-### Git operations (delegated to task-finish)
+### Git operations (delegated to task-git)
 - **PROHIBITED** force push, reset --hard, rebase and other destructive operations
 - **PROHIBITED** to delete task branches (retain for history)
 - **PROHIBITED** `--squash` — NEVER use squash merge. Only `git merge --no-ff`

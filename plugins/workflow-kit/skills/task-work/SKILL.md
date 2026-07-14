@@ -39,7 +39,7 @@ If `$ARGUMENTS` is empty — **STOP** and ask the user to specify the task ID:
 
 1. Extract TASK_ID from `$ARGUMENTS` (first match against pattern `T\d+`)
 2. If TASK_ID not found — stop and ask user to specify ID
-3. Extract `--defer-checks` (alias `--no-pint`) from `$ARGUMENTS` → save as **DEFER_CHECKS=true** (otherwise `false`). When `true`, the quality gates (Pint, PHPStan, Tests) are **SKIPPED** here because they run once per phase at the phase-level CHECKS step (see `phase-runner` + `task-finish --scope=phase --phase-action=CHECKS`). This is set automatically when running under branch-per-Phase orchestration.
+3. Extract `--defer-checks` (alias `--no-pint`) from `$ARGUMENTS` → save as **DEFER_CHECKS=true** (otherwise `false`). When `true`, the quality gates (Pint, PHPStan, Tests) are **SKIPPED** here because they run once per phase at the phase-level CHECKS step (see `phase-runner` + `task-git --scope=phase --phase-action=CHECKS`). This is set automatically when running under branch-per-Phase orchestration.
 
 ### Step 1: Load and execute speckit.implement workflow
 
@@ -59,8 +59,6 @@ If `$ARGUMENTS` is empty — **STOP** and ask the user to specify the task ID:
 
 ### Step 1.5: PHPDoc Traceability (NON-NEGOTIABLE)
 
-**BEFORE** starting to write code — read the file `.specify/memory/traceability.md` (via Read tool). This is a compact file (~100 lines) with full rules, examples, and a table.
-
 During implementation of task {TASK_ID} **MANDATORY** apply traceability tags at the **granular level**:
 
 | Action | Tag | Example |
@@ -71,8 +69,6 @@ During implementation of task {TASK_ID} **MANDATORY** apply traceability tags at
 | Modifying existing method | `@modified-by {TASK_ID}` | Add to method PHPDoc |
 | Modifying existing property | `@modified-by {TASK_ID}` | Add to property PHPDoc |
 | Requirement linkage | `@spec FR-***/NFR-***` | If specified in tasks.md |
-
-> **Rule source**: `.specify/memory/traceability.md`. When in doubt — re-read the file.
 
 ### Step 2: Summary
 

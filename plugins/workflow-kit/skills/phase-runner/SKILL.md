@@ -30,7 +30,7 @@ phase on **ONE phase branch** (`{phase_branch_prefix}{N}`, e.g. `phase/3`):
 This replaces the old branch-per-task model (one branch + one merge + one full check run
 per task) — collapsing N×(branch+merge+checks) into 1×(branch+merge) + 1×(checks) per phase.
 Checks are deferred to phase level via `--defer-checks` on each task and run via
-`task-finish --scope=phase --phase-action=CHECKS`.
+`task-git --scope=phase --phase-action=CHECKS`.
 
 ## Required argument
 
@@ -161,7 +161,7 @@ Before starting any tasks:
 Before running any task, create the phase branch from the feature branch:
 
 ```
-Skill: task-finish "{N} --scope=phase --phase-action=CREATE --auto"
+Skill: task-git "{N} --scope=phase --phase-action=CREATE --auto"
 ```
 
 Then verify: `git branch --show-current` **MUST** equal `PHASE_BRANCH`. If not → **STOP**
@@ -286,7 +286,7 @@ the merge exactly once.
 
 1. **CHECKS** — run Pint + PHPStan + Tests once for the whole phase:
    ```
-   Skill: task-finish "{N} --scope=phase --phase-action=CHECKS --auto"
+   Skill: task-git "{N} --scope=phase --phase-action=CHECKS --auto"
    ```
    This runs `commands.pint` (auto-fix → commit `style(phase-{N}): pint` if it changed files), then `commands.phpstan` on changed files only, then `commands.test`.
    - On any failure (unfixable Pint violations, PHPStan errors in changed files, or failing tests) the skill **STOPs** and leaves `PHASE_BRANCH` **unmerged**. When this happens → **STOP**, surface the failure to the user, and do **not** merge or mark any task `[x]`.
@@ -294,7 +294,7 @@ the merge exactly once.
 
 2. **MERGE** — merge the phase branch into the feature branch once:
    ```
-   Skill: task-finish "{N} --scope=phase --phase-action=MERGE --auto"
+   Skill: task-git "{N} --scope=phase --phase-action=MERGE --auto"
    ```
    This does `git checkout {current_branch}; git merge --no-ff {PHASE_BRANCH}`. **Never** into development. On conflict the skill **STOPs** — surface it and do not mark `[x]`.
 
@@ -325,7 +325,7 @@ Print the task summary table:
 **How to populate each row:**
 - **timing** — parse `duration_ms` from the agent result's `<usage>` block; format as `Xm Ys`.
 - **tokens** — parse `subagent_tokens` from the agent result's `<usage>` block.
-- **Phase checks line** — Pint / PHPStan / Tests are reported **ONCE** for the whole phase (not per task), taken from the `task-finish --phase-action=CHECKS` output at Step 7.5. Per-task rows no longer carry per-task check marks (checks were deferred).
+- **Phase checks line** — Pint / PHPStan / Tests are reported **ONCE** for the whole phase (not per task), taken from the `task-git --phase-action=CHECKS` output at Step 7.5. Per-task rows no longer carry per-task check marks (checks were deferred).
 - **Phase merge line** — the single `--no-ff` merge from Step 7.5.
 - **skipped tasks** — show only task ID and "skipped (already [x])"; no timing or tokens.
 - **Wall time** — sum of all `duration_ms` values (parallel tasks count once, not summed).
@@ -381,7 +381,7 @@ Bash("curl -s -o /dev/null -d \"Phase {N} complete: {N_ok}/{N_total}\" https://n
 
 ### Delegation
 - phase-runner **does NOT implement tasks** — it only orchestrates agent runs
-- Phase branch lifecycle (CREATE / CHECKS / MERGE) → `task-finish --scope=phase` via the **Skill tool**
+- Phase branch lifecycle (CREATE / CHECKS / MERGE) → `task-git --scope=phase` via the **Skill tool**
 - Parallel tasks → `task-runner-parallel` agent (one call with all IDs, `--scope=phase --defer-checks`)
 - Sequential tasks → `task-runner` agent (one call per task, `--scope=phase --defer-checks`)
 - **Do NOT use** the Skill tool for task-runner-parallel/task-runner — use only the Agent tool
