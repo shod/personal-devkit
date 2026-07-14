@@ -48,3 +48,4 @@ Edit a skill here → commit → push. In each project:
 No files are copied into consuming repos → no drift.
 
 See MAPPING.md for what goes where (and the IP note on project-1-authored skills).
+See CHEATSHEET.md for day-to-day plugin commands, scopes, and the sync loop.
