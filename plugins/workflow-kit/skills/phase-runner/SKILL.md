@@ -22,7 +22,7 @@ Reads tasks.md, determines which tasks belong to the requested phase, and runs t
 phase on **ONE phase branch** (`{phase_branch_prefix}{N}`, e.g. `phase/3`):
 - Create the phase branch **once** (from the feature branch).
 - Run all phase tasks ON it — one commit per task (traceability preserved):
-  - **In parallel** (`[P]`-marked tasks) → `task-runner-parallel` (isolated worktrees, each fast-merged back into the phase branch, serialized)
+  - **In parallel** (`[P]`-marked tasks) → `task-runner-parallel` (isolated worktrees implement and commit concurrently; `task-runner-parallel` itself then merges each worktree branch back into the phase branch **sequentially, one at a time** — a single writer by construction, not a lock)
   - **Sequentially** (tasks without `[P]`) → `task-runner`
 - Run **Pint + PHPStan + Tests ONCE** for the whole phase (CHECKS), then **ONE `--no-ff`
   merge** of the phase branch into the feature branch.
@@ -178,13 +178,13 @@ If `parallel_tasks` is not empty:
 ═══════════════════════════════════════════════════
 ```
 
-**Before delegating — check for a shared-file hazard.** Extract the file paths from each parallel task's text. If two `[P]` tasks in the batch reference the **same file** (common with TDD pairs where one writes a test the other also edits, or Pint vs PHPStan on the same source), they will race on the shared `PHASE_BRANCH`: one agent self-merges from the main worktree while the other correctly stops, often leaving a stray working-tree edit you must reconcile by hand. When you detect overlap, instruct the parallel agent in the prompt to: (a) run the overlapping tasks in **isolated worktrees**, (b) keep edits minimal/non-overlapping, and (c) **merge them back into `PHASE_BRANCH` sequentially and reconcile** rather than letting both self-merge from the shared checkout.
+**Before delegating — check for a shared-file hazard.** Extract the file paths from each parallel task's text. If two `[P]` tasks in the batch reference the **same file** (common with TDD pairs where one writes a test the other also edits, or Pint vs PHPStan on the same source), the concurrent-writer race on `PHASE_BRANCH` itself cannot happen anymore — workers never merge into `PHASE_BRANCH` (`task-runner-parallel` does that sequentially, see Merge-back serialization in that agent's definition) — but the two workers' edits can still **content-conflict** at that later sequential-merge step, since both touched the same file independently in isolated worktrees. When you detect overlap, instruct the parallel agent in the prompt to (a) run the overlapping tasks in **isolated worktrees** (already mandatory) and (b) keep edits minimal/non-overlapping where possible, so the sequential merge-back is more likely to be conflict-free; a real conflict is still possible and will surface as a **STOP** during `task-runner-parallel`'s merge-back step, to be resolved manually.
 
 Delegate to a `task-runner-parallel` agent. The integration target is **`PHASE_BRANCH`**, NOT the feature branch:
 ```
 Agent(
   subagent_type: "task-runner-parallel",
-  prompt: "{TASK_ID1} {TASK_ID2} {TASK_ID3} --scope=phase --defer-checks\n\n{context block: cwd, current_branch, PHASE_BRANCH, task_branch_prefix, AUTO_MODE, MCP tools, per-task SCOPE files, and the shared-file reconciliation note if overlap detected. KEY RULES: each task's ephemeral worktree branch is {task_branch_prefix}{TASK_ID} off PHASE_BRANCH HEAD; commit feat({TASK_ID}): ...; MERGE BACK INTO PHASE_BRANCH (--no-ff), NEVER into the feature branch and NEVER into development; checks are deferred (--defer-checks) — do NOT run Pint/PHPStan/Tests; serialize the merge-backs into PHASE_BRANCH.}"
+  prompt: "{TASK_ID1} {TASK_ID2} {TASK_ID3} --scope=phase --defer-checks\n\n{context block: cwd, current_branch, PHASE_BRANCH, task_branch_prefix, AUTO_MODE, MCP tools, per-task SCOPE files, and the shared-file reconciliation note if overlap detected. KEY RULES: each task's ephemeral worktree branch is {task_branch_prefix}{TASK_ID} off PHASE_BRANCH HEAD; workers commit feat({TASK_ID}): ... on their own worktree branch ONLY — workers must NOT merge into PHASE_BRANCH, the feature branch, or development; task-runner-parallel itself merges every worker's branch back into PHASE_BRANCH sequentially (--no-ff), one at a time, immediately after the batch returns; checks are deferred (--defer-checks) — do NOT run Pint/PHPStan/Tests.}"
 )
 ```
 
@@ -211,8 +211,8 @@ For each task in the batch, in order:
    git checkout {PHASE_BRANCH}   # ensure we are on the phase branch
    git log {current_branch}..{PHASE_BRANCH} --oneline   # must contain a feat({TASK_ID}): ... commit for each task
    ```
-   For each parallel task, confirm a `feat({TASK_ID})` commit is present on `PHASE_BRANCH` (the agent's worktree branch `{task_branch_prefix}{TASK_ID}` should already have been merged back into `PHASE_BRANCH`).
-   If a worktree branch exists but was **not merged back** into `PHASE_BRANCH` — merge it now (NOT into the feature branch):
+   For each parallel task, confirm a `feat({TASK_ID})` commit is present on `PHASE_BRANCH`. By design, `task-runner-parallel` already performed every merge-back **sequentially** (one worker's branch at a time) before returning — workers themselves never touch `PHASE_BRANCH`, so this is a verification/safety-net step, not the primary merge point.
+   If a worktree branch exists but, unexpectedly, was **not merged back** into `PHASE_BRANCH` (e.g. `task-runner-parallel` reported an error for that task) — merge it now (NOT into the feature branch):
    ```
    git branch | grep {TASK_ID}   # find the exact ephemeral branch name (agents use varied naming)
    git merge {exact-branch} --no-ff -m "feat({TASK_ID}): merge into {PHASE_BRANCH}"
@@ -368,7 +368,7 @@ Bash("curl -s -o /dev/null -d \"Phase {N} complete: {N_ok}/{N_total}\" https://n
 
 ### Branch-per-Phase model (the core invariant)
 - **ONE `PHASE_BRANCH` (`{phase_branch_prefix}{N}`) per phase**, created ONCE (Step 5.6) from the feature branch.
-- **Every** task in the phase is committed onto `PHASE_BRANCH` (one commit per task — `feat({TASK_ID}): ...`). `[P]` tasks use isolated worktrees branched off `PHASE_BRANCH` HEAD and are **fast-merged back into `PHASE_BRANCH` (serialized)** — NOT into the feature branch.
+- **Every** task in the phase is committed onto `PHASE_BRANCH` (one commit per task — `feat({TASK_ID}): ...`). `[P]` tasks use isolated worktrees branched off `PHASE_BRANCH` HEAD; workers commit there only, and `task-runner-parallel` merges every worktree branch **back into `PHASE_BRANCH` itself, sequentially, one at a time** (never the workers, never concurrently) — NOT into the feature branch.
 - **Checks run ONCE per phase** (Step 7.5): Pint + PHPStan(changed files) + Tests, deferred from each task via `--defer-checks`.
 - **The phase branch merges into the feature branch exactly ONCE** (Step 7.5, `--no-ff`), only after CHECKS pass. **NEVER** into development. **PROHIBITED: `--squash`.**
 - Tasks are marked `[x]` in tasks.md **only after** the phase merge succeeds.

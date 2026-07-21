@@ -193,10 +193,15 @@ phase branch first."
 
 > **Parallel `[P]` tasks** (this agent launched with `isolation: "worktree"`): the SDK
 > gives you an isolated worktree. Branch your ephemeral work off `{PHASE_BRANCH}` HEAD as
-> `{task_branch_prefix}{TASK_ID}` (e.g. `task/T010`), commit `feat({TASK_ID}): ...`, then
-> **merge it back into `{PHASE_BRANCH}` with `--no-ff`** — **NOT** into the feature branch.
-> `phase-runner` serializes these merge-backs. Keep edits minimal and within the task's
-> related-files scope.
+> `{task_branch_prefix}{TASK_ID}` (e.g. `task/T010`) and commit `feat({TASK_ID}): ...` on it.
+> **Do NOT merge this branch back into `{PHASE_BRANCH}` yourself** — with multiple worktree
+> agents running concurrently, all merging into the same `PHASE_BRANCH` at once is a race
+> (two workers can read the same tip and clobber each other's merge). Merge-back is done
+> **sequentially, one worker at a time, by `task-runner-parallel`** after every parallel
+> worker in the batch has finished implementing and committing. Just leave your commit on
+> `{task_branch_prefix}{TASK_ID}` and report that branch name back to the caller — do not
+> touch `{PHASE_BRANCH}` at all. Keep edits minimal and within the task's related-files
+> scope.
 
 ### Phase-mode Phase 2 — implement (checks deferred)
 
@@ -212,8 +217,12 @@ merge into the feature branch.
 
 ### Phase-mode Phase 4 — no merge
 
-**SKIP.** The single `--no-ff` merge of `{PHASE_BRANCH}` into the feature branch is done
-once by `phase-runner` after CHECKS pass.
+**SKIP.** For sequential tasks, `task-git --scope=phase --phase-action=COMMIT` already
+commits directly onto `{PHASE_BRANCH}` (there is no separate worktree branch to merge). For
+parallel `[P]` tasks, this agent never touches `{PHASE_BRANCH}` — see the note in Phase 1
+above; `task-runner-parallel` merges each worker's branch back **sequentially** after the
+whole batch finishes. The single `--no-ff` merge of `{PHASE_BRANCH}` into the feature branch
+is done once by `phase-runner` after CHECKS pass.
 
 ### Phase-mode Phase 5 — record time
 
