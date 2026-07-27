@@ -14,7 +14,7 @@ allowed-tools: Agent Read Grep Glob Skill AskUserQuestion Edit Bash PowerShell T
 model: sonnet
 metadata:
   author: speckit
-  version: "1.1"
+  version: "1.2"
   category: task-orchestration
 ---
 
