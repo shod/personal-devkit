@@ -1,20 +1,20 @@
 ---
 name: phase-runner
 description: >-
-  Phase orchestrator from tasks.md: automatically determines which phase tasks
-  to run in parallel ([P]-marker) and which sequentially — and calls
-  the corresponding agents (task-runner-parallel or task-runner).
-  Use /phase-runner 4 or /phase-runner "Phase 4" for full execution
-  of all phase tasks with correct parallelism. Accepts several phases
-  (/phase-runner 4 5 6) — they run sequentially without a confirmation prompt.
-  Indispensable when you need to run an entire phase with one command
-  without manually parsing tasks.
-argument-hint: "<phase-number-or-name> [more-phases...] [--auto|--yes|--no-confirm]"
+  Phase orchestrator from tasks.md: runs every task of a phase on ONE phase
+  branch, with ONE checks run and ONE merge. By default all tasks — including
+  [P]-marked ones — run SEQUENTIALLY on the phase branch via task-runner;
+  parallel worktree execution is opt-in via the explicit --parallel flag.
+  Use /phase-runner 4 or /phase-runner "Phase 4" for full execution of all
+  phase tasks. Accepts several phases (/phase-runner 4 5 6) — they run
+  sequentially without a confirmation prompt. Indispensable when you need to
+  run an entire phase with one command without manually parsing tasks.
+argument-hint: "<phase-number-or-name> [more-phases...] [--parallel] [--auto|--yes|--no-confirm]"
 allowed-tools: Agent Read Grep Glob Skill AskUserQuestion Edit Bash PowerShell TodoWrite
-model: haiku
+model: sonnet
 metadata:
   author: speckit
-  version: "1.0"
+  version: "1.1"
   category: task-orchestration
 ---
 
@@ -24,10 +24,22 @@ Reads tasks.md, determines which tasks belong to the requested phase, and runs t
 phase on **ONE phase branch** (`{phase_branch_prefix}{N}`, e.g. `phase/3`):
 - Create the phase branch **once** (from the feature branch).
 - Run all phase tasks ON it — one commit per task (traceability preserved):
-  - **In parallel** (`[P]`-marked tasks) → `task-runner-parallel` (isolated worktrees implement and commit concurrently; `task-runner-parallel` itself then merges each worktree branch back into the phase branch **sequentially, one at a time** — a single writer by construction, not a lock)
-  - **Sequentially** (tasks without `[P]`) → `task-runner`
+  - **By default (no `--parallel`): every task runs SEQUENTIALLY** directly on the phase
+    branch via `task-runner` — no worktrees, no merge-back. A `[P]` marker in tasks.md is
+    read as "this task *could* be parallelised", not as an instruction to do so.
+  - **Only with the explicit `--parallel` flag**: `[P]`-marked tasks are batched to
+    `task-runner-parallel` (isolated worktrees implement and commit concurrently;
+    `task-runner-parallel` itself then merges each worktree branch back into the phase
+    branch **sequentially, one at a time** — a single writer by construction, not a lock).
 - Run **Pint + PHPStan + Tests ONCE** for the whole phase (CHECKS), then **ONE `--no-ff`
   merge** of the phase branch into the feature branch.
+
+> **Why sequential by default.** The value of phase-runner is the *batching* — one branch,
+> one CHECKS run, one merge — which is orthogonal to parallelism. In practice worktree
+> parallelism bought little wall-time (tasks are small; worktree setup on Windows and
+> `RefreshDatabase` test runs dominate) while adding a durable class of failures:
+> merge-back races, false "success" on empty or wrong commits, and shared-file conflicts
+> that only surface at merge time. Parallelism is therefore **opt-in**.
 
 This replaces the old branch-per-task model (one branch + one merge + one full check run
 per task) — collapsing N×(branch+merge+checks) into 1×(branch+merge) + 1×(checks) per phase.
@@ -44,7 +56,11 @@ Accepted formats:
 - `phase 4`
 - **Several phases:** `4 5 6`, `Phase 4, Phase 5`, `3-5` (inclusive range)
 
-Optional flags: `--auto`, `--yes`, `-y`, `--no-confirm` — skip the confirmation prompt.
+Optional flags:
+- `--auto`, `--yes`, `-y`, `--no-confirm` — skip the confirmation prompt.
+- **`--parallel`** — enable parallel execution of `[P]`-marked tasks via
+  `task-runner-parallel` (isolated worktrees + sequential merge-back). **Without this flag
+  every task runs sequentially on the phase branch**, `[P]` marker or not.
 
 If `$ARGUMENTS` contains no phase number — **STOP** and ask the user:
 > Specify the phase number: `/phase-runner 4`
@@ -56,6 +72,7 @@ If `$ARGUMENTS` contains no phase number — **STOP** and ask the user:
 ### Step 1: Parse the argument
 
 1. Strip the flags `--auto` / `--yes` / `-y` / `--no-confirm` from `$ARGUMENTS`; if any was present set **`AUTO_CONFIRM = true`**.
+1a. Strip `--parallel` from `$ARGUMENTS`; set **`PARALLEL_MODE = true`** if it was present, otherwise **`PARALLEL_MODE = false`**. This is the ONLY way parallel execution is enabled — a `[P]` marker in tasks.md never enables it on its own.
 2. Extract **all** phase numbers from the remainder, in the order given: every `\d+`, plus ranges `N-M` expanded to `N, N+1, …, M`. Ignore a trailing spec identifier (Step 2a) when it is a known spec name/number rather than a phase.
 3. Save the ordered, de-duplicated list as **`$PHASES`**.
 4. If `$PHASES` is empty — stop and ask the user to specify.
@@ -94,7 +111,10 @@ From the phase section extract all tasks in the format:
 
 For each task determine:
 - **TASK_ID**: pattern `T\d+`
-- **is_parallel**: `[P]` marker present in the task line
+- **has_p_marker**: `[P]` marker present in the task line
+- **is_parallel**: `has_p_marker AND PARALLEL_MODE` — i.e. **false for every task unless
+  `--parallel` was passed**. When `PARALLEL_MODE = false`, `[P]` is informational only and
+  the task joins the sequential list.
 - **is_done**: task is marked `[x]` or `[X]`
 
 ### Step 4: Analyse completed tasks
@@ -119,19 +139,57 @@ For each such task:
 
 ### Step 5: Show execution plan
 
-Build the execution schedule by walking tasks in **tasks.md order** and grouping consecutive `[P]` tasks into a single parallel batch. Manual tasks (Step 4.5) are listed separately as `⊘ MANUAL` and excluded from the agent batches. Sequential tasks that appear before, between, or after a parallel group run in their natural order. Example:
+Build the execution schedule by walking tasks in **tasks.md order**.
 
-```
-T009 (sequential) → [T010, T011] (parallel batch) → T012 (sequential)
-```
-
-Show the user the plan before starting:
+**If `PARALLEL_MODE = false` (the default)** — there are no batches. Every pending task is
+sequential and commits directly onto `PHASE_BRANCH`, in tasks.md order. Manual tasks
+(Step 4.5) are listed separately as `⊘ MANUAL`. Show:
 
 ```
 ═══════════════════════════════════════════════════
   Phase Runner: Phase {N}   →   branch {phase_branch_prefix}{N}
 ═══════════════════════════════════════════════════
   Queue: {$PHASES joined}  (phase {i} of {total})     ← only when >1 phase
+  Mode: SEQUENTIAL (default — pass --parallel to enable [P] batching)
+  Model: 1 phase branch → {pending} tasks → 1 CHECKS → 1 merge
+  Total tasks: {total}  |  Skipped (done): {done}
+  To run: {pending}
+
+  ▶ Sequential onto {phase_branch_prefix}{N}:
+    {T009} — {description}
+    {T010} — {description}   [P in tasks.md — running sequentially]
+    {T011} — {description}   [P in tasks.md — running sequentially]
+    {T012} — {description}
+
+  Execution order (tasks.md order, one task at a time):
+    0. Create branch {phase_branch_prefix}{N}
+    1. {T009} — sequential onto PHASE_BRANCH
+    2. {T010} — sequential onto PHASE_BRANCH
+    3. {T011} — sequential onto PHASE_BRANCH
+    4. {T012} — sequential onto PHASE_BRANCH
+    5. CHECKS: Pint + PHPStan + Tests (ONCE)
+    6. Merge {phase_branch_prefix}{N} → {current_branch} (--no-ff, ONCE)
+═══════════════════════════════════════════════════
+Start? (yes/no)          ← omit this line entirely when AUTO_CONFIRM = true
+```
+
+Tasks carrying a `[P]` marker **must** be annotated `[P in tasks.md — running sequentially]`
+so the user can see that parallelism was available and was not used.
+
+**If `PARALLEL_MODE = true`** — group consecutive `[P]` tasks into a single parallel batch.
+Sequential tasks that appear before, between, or after a parallel group run in their natural
+order. Example:
+
+```
+T009 (sequential) → [T010, T011] (parallel batch) → T012 (sequential)
+```
+
+```
+═══════════════════════════════════════════════════
+  Phase Runner: Phase {N}   →   branch {phase_branch_prefix}{N}
+═══════════════════════════════════════════════════
+  Queue: {$PHASES joined}  (phase {i} of {total})     ← only when >1 phase
+  Mode: PARALLEL (--parallel) — [P] tasks run in isolated worktrees
   Model: 1 phase branch → {pending} tasks → 1 CHECKS → 1 merge
   Total tasks: {total}  |  Skipped (done): {done}
   To run: {pending}
@@ -174,8 +232,45 @@ Before starting any tasks:
 2. **Resolve `{current_branch}` from git, NOT from config.** Run `git branch --show-current` and use that as `{current_branch}`. ⚠️ Do **not** trust the `feature_branch` key in `.claude-project.json` — it is frequently STALE (e.g. it may name an old feature branch while the real working branch differs). The branch you are checked out on is the source of truth. Pass this resolved branch to every agent.
 3. **Resolve the phase-branch name and the (ephemeral) task-branch prefix.**
    - Read `phase_branch_prefix` from `.claude-project.json` `paths` (e.g. `phase/`). Set **`PHASE_BRANCH = {phase_branch_prefix}{N}`** (e.g. `phase/3`). This is the ONE branch that holds the whole phase. The flat form avoids the nested-ref problem (git cannot create `{current_branch}/...` under an existing `{current_branch}` ref).
-   - Read `task_branch_prefix` (e.g. `task/`). It is still needed for `[P]` **worktree** branches: parallel tasks branch off `PHASE_BRANCH` HEAD as `{task_branch_prefix}{TASK_ID}` and merge **back into `PHASE_BRANCH`** (not the feature branch).
-   - Pass both `PHASE_BRANCH` and `task_branch_prefix` explicitly to every agent.
+   - Read `task_branch_prefix` (e.g. `task/`). It is needed **only when `PARALLEL_MODE = true`**, for `[P]` **worktree** branches: parallel tasks branch off `PHASE_BRANCH` HEAD as `{task_branch_prefix}{TASK_ID}` and merge **back into `PHASE_BRANCH`** (not the feature branch). In the default sequential mode no task branches are created at all.
+   - Pass `PHASE_BRANCH` explicitly to every agent (and `task_branch_prefix` too, in parallel mode).
+4. **Resolve `{plugin_root}`** — the `workflow-kit` plugin directory, i.e. the parent of the
+   directory holding this SKILL.md's `skills/` tree (`{plugin_root}/skills/phase-runner/SKILL.md`
+   is this file). Its `{plugin_root}/scripts/` holds `verify-task.{sh,ps1}` and
+   `merge-back.{sh,ps1}`, used at Steps 6 and 7. Check once that
+   `{plugin_root}/scripts/verify-task.sh` exists; if it does not, note it and use the manual
+   fallback described in Rules → "Verifying task completion" for the whole run.
+
+### Step 5.55: Guard against a STALE phase branch from a previous feature
+
+`{phase_branch_prefix}{N}` is a flat, reusable name (`phase/4`) — a phase branch left over
+from an **earlier feature** will very often already exist under exactly that name. Committing
+this phase's work onto it would stack the new commits on an obsolete base and poison both
+CHECKS and the merge. So, **before** Step 5.6:
+
+1. `git rev-parse --verify --quiet {PHASE_BRANCH}` — if it does not exist, nothing to do;
+   go to Step 5.6.
+2. If it exists, decide whether it belongs to the **current** feature:
+   - `git merge-base {PHASE_BRANCH} {current_branch}` and
+     `git log {merge_base}..{current_branch} --oneline | wc -l` — a large distance (the
+     branch forked long before the current feature's work) means it is not ours.
+   - `git log {current_branch}..{PHASE_BRANCH} --oneline` — if none of those commit
+     subjects reference a task ID (`T\d+`) belonging to **this spec's** `$TASKS_PATH`, it is
+     not ours.
+   - Both signals agreeing on "not ours" (or either one being unambiguous) ⇒ **stale**.
+3. **If stale** — rename it out of the way instead of deleting it (branch deletion is
+   prohibited; history is retained):
+   ```
+   git branch -m {PHASE_BRANCH} {PHASE_BRANCH}-{spec-slug-of-the-old-feature}-stale
+   ```
+   Use the old feature's slug when it can be inferred from that branch's commits, otherwise
+   the current date-free fallback `{PHASE_BRANCH}-stale`; if that name is taken too, append
+   `-2`, `-3`, … Tell the user plainly:
+   > ⚠️ `{PHASE_BRANCH}` already existed and pointed at commits from a different feature.
+   > Renamed to `{new-name}`; creating a fresh `{PHASE_BRANCH}` off `{current_branch}`.
+4. **If it is ours** (this feature's phase branch, e.g. a resumed run) — do **not** rename.
+   Report that the existing phase branch is being reused and let Step 5.6 check it out
+   rather than create it.
 
 ### Step 5.6: Create the phase branch (ONCE)
 
@@ -189,9 +284,13 @@ Then verify: `git branch --show-current` **MUST** equal `PHASE_BRANCH`. If not �
 and report (do not run any task off the wrong branch). From here on, `PHASE_BRANCH` — not
 the feature branch — is the integration target for every task in this phase.
 
-### Step 6: Parallel batch (if [P] tasks exist)
+### Step 6: Parallel batch — ONLY when `PARALLEL_MODE = true`
 
-If `parallel_tasks` is not empty:
+**If `PARALLEL_MODE = false` (the default) — SKIP this entire step.** `parallel_tasks` is
+empty by construction (Step 3), `task-runner-parallel` is not invoked, no worktree is
+created and no merge-back happens. Go straight to Step 7, which runs every pending task.
+
+If `PARALLEL_MODE = true` and `parallel_tasks` is not empty:
 
 ```
 ═══════════════════════════════════════════════════
@@ -227,18 +326,37 @@ For each task in the batch, in order:
    ```
    Then restore any remaining uncommitted changes to in-scope files as well (agents should have committed everything).
 
-2. **Verify each task's commit landed on `PHASE_BRANCH`** (do NOT merge into the feature branch yet — that happens once at Step 7.5):
+2. **Verify each task landed on `PHASE_BRANCH`** — run the verification **script** and read
+   its exit code. Do NOT interpret git state yourself, and do NOT merge into the feature
+   branch yet (that happens once at Step 7.5):
    ```
-   git checkout {PHASE_BRANCH}   # ensure we are on the phase branch
-   git log {current_branch}..{PHASE_BRANCH} --oneline   # must contain a feat({TASK_ID}): ... commit for each task
+   git checkout {PHASE_BRANCH}
+   bash {plugin_root}/scripts/verify-task.sh {current_branch} {PHASE_BRANCH} {TASK_ID} {SCOPE_GLOBS...}
+   # Windows / PowerShell:
+   {plugin_root}/scripts/verify-task.ps1 {current_branch} {PHASE_BRANCH} {TASK_ID} {SCOPE_GLOBS...}
    ```
-   For each parallel task, confirm a `feat({TASK_ID})` commit is present on `PHASE_BRANCH`. By design, `task-runner-parallel` already performed every merge-back **sequentially** (one worker's branch at a time) before returning — workers themselves never touch `PHASE_BRANCH`, so this is a verification/safety-net step, not the primary merge point.
-   If a worktree branch exists but, unexpectedly, was **not merged back** into `PHASE_BRANCH` (e.g. `task-runner-parallel` reported an error for that task) — merge it now (NOT into the feature branch):
+   `{SCOPE_GLOBS...}` = the task's related-files list extracted from the task text
+   (see "Related files (SCOPE)"). **Exit 0 = task verified. Any non-zero exit = `✗ INCOMPLETE`** —
+   print the script's stderr verbatim, **STOP**, and report to the user. See
+   "Verifying task completion" in Rules for the exact criterion and the manual fallback.
+
+   By design, `task-runner-parallel` already performed every merge-back **sequentially**
+   (one worker's branch at a time) before returning — workers themselves never touch
+   `PHASE_BRANCH`, so this is a verification/safety-net step, not the primary merge point.
+   If verification fails **because the worktree branch was never merged back** (the branch
+   exists and holds the commit, e.g. `task-runner-parallel` reported an error for it) —
+   merge it now with the merge-back **script** (NOT into the feature branch), then re-run
+   `verify-task`:
    ```
-   git branch | grep {TASK_ID}   # find the exact ephemeral branch name (agents use varied naming)
-   git merge {exact-branch} --no-ff -m "feat({TASK_ID}): merge into {PHASE_BRANCH}"
+   git branch --list "*{TASK_ID}*"      # find the exact ephemeral branch name
+   bash {plugin_root}/scripts/merge-back.sh {PHASE_BRANCH} {exact-branch} {TASK_ID}
+   # Windows: {plugin_root}/scripts/merge-back.ps1 {PHASE_BRANCH} {exact-branch} {TASK_ID}
    ```
-   If **no branch and no commit** matches `{TASK_ID}` AND the task was supposed to create a new file — check if that file exists; if it exists uncommitted, commit it onto `PHASE_BRANCH`. If neither commit nor file exists, mark as `✗ INCOMPLETE`.
+   Exit 0 = merged (or already merged). Exit 1 = conflict — the script aborts the merge and
+   lists the conflicting files; **STOP** and hand them to the user, do not resolve
+   automatically.
+
+   If **no branch and no commit** matches `{TASK_ID}` AND the task was supposed to create a new file — check if that file exists; if it exists uncommitted, commit it onto `PHASE_BRANCH` and re-run `verify-task`. If neither commit nor file exists, mark as `✗ INCOMPLETE`.
 
 3. **Do NOT mark `[x]` yet.** Tasks are marked complete in tasks.md only after the phase CHECKS pass and the phase branch is merged (Step 7.5). This keeps a failed CHECKS from leaving tasks falsely marked done.
 
@@ -252,13 +370,17 @@ If any tasks failed:
 - **STOP**: do not proceed to sequential tasks without user confirmation
   > "Parallel batch finished with errors. Continue with sequential tasks?"
 
-### Step 7: Sequential tasks (tasks without [P])
+### Step 7: Sequential tasks
+
+In the **default mode (`PARALLEL_MODE = false`) this step runs EVERY pending task of the
+phase**, `[P]`-marked or not, one at a time, directly on `PHASE_BRANCH`. With
+`--parallel` it runs only the tasks left over from the batches in Step 6.
 
 If `sequential_tasks` is not empty:
 
 ```
 ═══════════════════════════════════════════════════
-  [2/2] Sequential tasks: {TASK_ID list}
+  Sequential tasks: {TASK_ID list}
 ═══════════════════════════════════════════════════
 ```
 
@@ -294,10 +416,16 @@ For each task in **tasks.md order**:
 4. **After the agent returns — mandatory verification (target = `PHASE_BRANCH`, NOT the feature branch):**
    a. First verify git health: `git config --list > /dev/null`. If this fails, **STOP** and report `.git/config` corruption.
    b. Ensure we are on the phase branch: `git checkout {PHASE_BRANCH}` (the sequential agent worked directly on it).
-   c. `git log --oneline {current_branch}..{PHASE_BRANCH}` — there **must** be a new `feat({TASK_ID})` commit for this task on `PHASE_BRANCH`. If this task's commit is absent, the agent created no commit — task is INCOMPLETE.
-   d. Run `git status --short` — check for stray changes. For any modified file NOT in the task's related-files list, restore it: `git checkout HEAD -- <file>` and log a warning. If an in-scope change was left uncommitted, commit it onto `PHASE_BRANCH` as `feat({TASK_ID}): ...`.
+   c. Run the verification **script** and read its exit code — do NOT interpret git state yourself:
+      ```
+      bash {plugin_root}/scripts/verify-task.sh {current_branch} {PHASE_BRANCH} {TASK_ID} {SCOPE_GLOBS...}
+      # Windows / PowerShell:
+      {plugin_root}/scripts/verify-task.ps1 {current_branch} {PHASE_BRANCH} {TASK_ID} {SCOPE_GLOBS...}
+      ```
+      `{SCOPE_GLOBS...}` = the task's related-files list passed to the agent. **Exit 0 = verified; any non-zero exit = the task is INCOMPLETE.** (See "Verifying task completion" in Rules for the criterion and the manual fallback if the script cannot run.)
+   d. Run `git status --short` — check for stray changes. For any modified file NOT in the task's related-files list, restore it: `git checkout HEAD -- <file>` and log a warning. If an in-scope change was left uncommitted, commit it onto `PHASE_BRANCH` as `feat({TASK_ID}): ...` and re-run step (c).
    e. **Do NOT merge into the feature branch and do NOT mark `[x]`** — both happen once at Step 7.5 after CHECKS pass.
-   f. If step (c) shows no commit for `{TASK_ID}` → mark task as `✗ INCOMPLETE` and **STOP**: report to the user and ask how to proceed.
+   f. If step (c) exits non-zero → mark task as `✗ INCOMPLETE`, print the script's stderr verbatim, and **STOP**: report to the user and ask how to proceed. An empty commit, a commit that changes nothing, or a commit touching only files outside the task's SCOPE all land here — they are **not** success.
 5. On any other error → **STOP** (do not run the next task without user confirmation)
 
 ### Step 7.5: Phase CHECKS + MERGE (ONCE per phase)
@@ -319,7 +447,25 @@ the merge exactly once.
    ```
    This does `git checkout {current_branch}; git merge --no-ff {PHASE_BRANCH}`. **Never** into development. On conflict the skill **STOPs** — surface it and do not mark `[x]`.
 
-3. **Mark tasks complete** — only **after** a successful merge, replace `- [ ] {TASK_ID}` →
+3. **Migrations — run them against the dev database (do NOT skip silently).**
+   The phase tests run on `RefreshDatabase`, which migrates a **throwaway** schema; the
+   developer's dev database is left un-migrated, so a phase that added a migration leaves
+   the local app broken until it is applied. Immediately after the merge:
+   ```
+   git diff --name-only {current_branch}@{1}..{current_branch} -- "*database/migrations/*.php"
+   ```
+   If that list is **non-empty**, tell the user explicitly (never do it quietly):
+   > ⚠️ Phase {N} added {M} migration(s): {file list}
+   > The test suite ran them on a throwaway schema only — your **dev database is not
+   > migrated**. Running `commands.migrate` (`artisan migrate --force`) now.
+
+   Then run the migrate command from `.claude-project.json` `commands.*` (`commands.migrate`
+   if present, otherwise the project's `artisan migrate --force` equivalent) — **do not
+   hand-write `docker compose`**. If no such command is defined, or the run fails, do **not**
+   treat the phase as broken: report the exact command the user must run themselves and
+   carry on to step 4.
+
+4. **Mark tasks complete** — only **after** a successful merge, replace `- [ ] {TASK_ID}` →
    `- [x] {TASK_ID}` in `$TASKS_PATH` for **every** task run in this phase (parallel and
    sequential). Manual/`⊘ MANUAL` tasks (Step 4.5) stay `[ ]`.
 
@@ -338,6 +484,7 @@ Print the task summary table:
   ───────────────────────────────────────────────
   Phase checks (ONCE):   Pint ✓   PHPStan ✓ (changed files)   Tests ✓
   Phase merge (ONCE):    {PHASE_BRANCH} → {current_branch} (--no-ff)
+  Migrations:            {none | M new → dev DB migrated ✓ | M new → RUN MANUALLY: {cmd}}
 ═══════════════════════════════════════════════════
   Total: {N_ok}/{N_total} completed   Wall time: {total_wall_time}
 ═══════════════════════════════════════════════════
@@ -389,33 +536,74 @@ Bash("curl -s -o /dev/null -d \"Phase {N} complete: {N_ok}/{N_total}\" https://n
 
 ### Branch-per-Phase model (the core invariant)
 - **ONE `PHASE_BRANCH` (`{phase_branch_prefix}{N}`) per phase**, created ONCE (Step 5.6) from the feature branch.
-- **Every** task in the phase is committed onto `PHASE_BRANCH` (one commit per task — `feat({TASK_ID}): ...`). `[P]` tasks use isolated worktrees branched off `PHASE_BRANCH` HEAD; workers commit there only, and `task-runner-parallel` merges every worktree branch **back into `PHASE_BRANCH` itself, sequentially, one at a time** (never the workers, never concurrently) — NOT into the feature branch.
+- **Every** task in the phase is committed onto `PHASE_BRANCH` (one commit per task — `feat({TASK_ID}): ...`). In the default sequential mode the agent commits straight onto `PHASE_BRANCH`. Only under `--parallel` do `[P]` tasks use isolated worktrees branched off `PHASE_BRANCH` HEAD; workers commit there only, and `task-runner-parallel` merges every worktree branch **back into `PHASE_BRANCH` itself, sequentially, one at a time** (never the workers, never concurrently) — NOT into the feature branch.
 - **Checks run ONCE per phase** (Step 7.5): Pint + PHPStan(changed files) + Tests, deferred from each task via `--defer-checks`.
 - **The phase branch merges into the feature branch exactly ONCE** (Step 7.5, `--no-ff`), only after CHECKS pass. **NEVER** into development. **PROHIBITED: `--squash`.**
+- A pre-existing `{phase_branch_prefix}{N}` belonging to a **different** feature must be renamed to `…-stale` before the phase branch is created (Step 5.55) — never build a phase on an obsolete base, and never delete the old branch.
 - Tasks are marked `[x]` in tasks.md **only after** the phase merge succeeds.
+- If the phase added migrations, the dev database must be migrated (or the exact command surfaced to the user) after the merge — **never silently** (Step 7.5.3).
+
+### Parallelism is OPT-IN
+- **Default = fully sequential.** With no `--parallel` flag, every pending task of the phase — including tasks carrying `[P]` — runs one at a time via `task-runner` directly on `PHASE_BRANCH`. **No worktrees, no task branches, no merge-back.**
+- A `[P]` marker in tasks.md is **advisory metadata** ("this task has no ordering dependency"), NOT a trigger. It never by itself causes parallel execution.
+- `task-runner-parallel` is invoked **only** when `PARALLEL_MODE = true` (the user passed `--parallel`).
+- The plan (Step 5) must state the mode (`SEQUENTIAL` / `PARALLEL`) and, in sequential mode, annotate `[P]` tasks as `[P in tasks.md — running sequentially]`.
 
 ### Execution order
-- Walk tasks in **tasks.md order**; consecutive `[P]` tasks form one parallel batch
-- Sequential tasks that appear before a parallel group run first; those after run after
+- Walk tasks in **tasks.md order**
+- Default (sequential mode): strict tasks.md order, one task at a time
+- `--parallel` only: consecutive `[P]` tasks form one parallel batch; sequential tasks before a parallel group run first, those after run after
 - **Never mix** — do not run sequential tasks in parallel
-- Example: T009 (seq) → [T010, T011] (parallel) → T012 (seq) — all committing onto `PHASE_BRANCH`
+- Example under `--parallel`: T009 (seq) → [T010, T011] (parallel) → T012 (seq) — all committing onto `PHASE_BRANCH`
 
 ### Delegation
 - phase-runner **does NOT implement tasks** — it only orchestrates agent runs
 - Phase branch lifecycle (CREATE / CHECKS / MERGE) → `task-git --scope=phase` via the **Skill tool**
-- Parallel tasks → `task-runner-parallel` agent (one call with all IDs, `--scope=phase --defer-checks`)
-- Sequential tasks → `task-runner` agent (one call per task, `--scope=phase --defer-checks`)
+- Parallel tasks (**`--parallel` only**) → `task-runner-parallel` agent (one call with all IDs, `--scope=phase --defer-checks`)
+- Sequential tasks (**all tasks by default**) → `task-runner` agent (one call per task, `--scope=phase --defer-checks`)
+- Task verification and phase-mode merge-back → the `scripts/verify-task.{sh,ps1}` and `scripts/merge-back.{sh,ps1}` helpers via **Bash/PowerShell**; read the exit code, do not re-derive the verdict from git output
 - **Do NOT use** the Skill tool for task-runner-parallel/task-runner — use only the Agent tool
 - **Always use `$TASKS_PATH`** (found via Glob) in agent prompts — never hardcode `specs/001-aps-payment-link/tasks.md`
 - **Always pass `PHASE_BRANCH`** in agent prompts, and **always extract related files** from the task text (pattern `backend/...` and `tests/...`) as an explicit list
 
 ### Verifying task completion (applies to BOTH parallel and sequential tasks)
-After every agent returns, confirm the task landed on `PHASE_BRANCH` (do NOT merge into the feature branch here):
-1. `git checkout {PHASE_BRANCH}` — the integration target for the whole phase.
-2. `git log --oneline {feature_branch}..{PHASE_BRANCH}` — must contain a `feat({TASK_ID})` commit for this task. Absent = task INCOMPLETE.
-3. `git status --short` — no tracked uncommitted files (ignore untracked agent scratch: `.claude/worktrees/`, `.claude/agent-memory/`). Restore any stray out-of-scope TRACKED changes with `git checkout HEAD -- <file>`; commit any in-scope leftover onto `PHASE_BRANCH`.
-4. For `[P]` tasks: if the worktree branch was not merged back into `PHASE_BRANCH`, merge it now into `PHASE_BRANCH` (NOT the feature branch).
-5. If step 2 shows no commit for `{TASK_ID}` → mark task `✗ INCOMPLETE`, **STOP**, report to user.
+
+**A task counts as done only when ALL THREE hold:**
+1. A `feat({TASK_ID})` commit is present on `PHASE_BRANCH` (range `{feature_branch}..{PHASE_BRANCH}`), **AND**
+2. `git diff --stat {feature_branch}..{PHASE_BRANCH}` for that task is **non-empty** — the commit actually changed files, **AND**
+3. At least one changed file matches the task's **SCOPE** (the related-files list extracted from the task text).
+
+"A commit exists" alone is **NOT** sufficient: an empty commit, an `--allow-empty`-style
+no-op, or a commit that only touched files nobody asked for all satisfy (1) and still mean
+the task was not done. Any of the three failing ⇒ `✗ INCOMPLETE` ⇒ **STOP** and report to
+the user.
+
+**Do not evaluate this by hand — run the script and read the exit code:**
+```
+bash {plugin_root}/scripts/verify-task.sh {feature_branch} {PHASE_BRANCH} {TASK_ID} {SCOPE_GLOBS...}
+# Windows / PowerShell:
+{plugin_root}/scripts/verify-task.ps1 {feature_branch} {PHASE_BRANCH} {TASK_ID} {SCOPE_GLOBS...}
+```
+| exit | meaning | action |
+|------|---------|--------|
+| 0 | all three criteria hold | task verified; continue |
+| 1 | verification failed (missing/empty commit, or out of scope) | `✗ INCOMPLETE` → **STOP**, print stderr verbatim, report |
+| 2 | usage / repo error (bad branch, not a git repo) | **STOP** — an orchestration bug, not a task failure |
+
+The script is read-only and idempotent; re-running it after a fix is always safe. If it
+emits `WARNING: no SCOPE globs given`, the scope criterion was skipped — say so in the
+report rather than presenting the task as fully verified.
+
+Around that check, still:
+- `git checkout {PHASE_BRANCH}` first — the integration target for the whole phase. Never merge into the feature branch here.
+- `git status --short` — no tracked uncommitted files (ignore untracked agent scratch: `.claude/worktrees/`, `.claude/agent-memory/`). Restore any stray out-of-scope TRACKED changes with `git checkout HEAD -- <file>`; commit any in-scope leftover onto `PHASE_BRANCH` and re-run the script.
+- For `[P]` tasks under `--parallel`: if the worktree branch was not merged back into `PHASE_BRANCH`, merge it with `scripts/merge-back.{sh,ps1} {PHASE_BRANCH} {branch} {TASK_ID}` (exit 0 = merged or already merged; exit 1 = conflict → **STOP** with the listed files) — NEVER into the feature branch.
+
+**Fallback if the script cannot run** (missing interpreter, `plugin_root` unresolved,
+permission denied): say so explicitly in the report, then evaluate the same three criteria
+manually — `git log --oneline {feature_branch}..{PHASE_BRANCH} --grep="({TASK_ID})"`,
+`git show --stat <sha>` for a non-empty file list, and check those paths against the task's
+related-files list. The criteria are unchanged; only the mechanism is.
 
 ### Stopping on errors
 - Error or incomplete result in parallel batch → **STOP**, ask user before proceeding
