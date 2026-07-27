@@ -320,7 +320,11 @@ For each task in the batch, in order:
    ```
    git status --short
    ```
-   Ignore untracked agent scratch paths — lines containing `.claude/worktrees/` or `.claude/agent-memory/` (these are agent working dirs, never project scope; leave them untouched). For any tracked file (lines `M` or `A`) that is **not** listed in the task's "Related files" — restore it immediately and log a warning:
+   **NEVER restore these paths** — they are excluded from the restore, always:
+   - `.claude/worktrees/` and `.claude/agent-memory/` (agent working dirs, never project scope — leave untouched)
+   - **`$TASKS_PATH` (`specs/*/tasks.md`)** — restoring it **destroys completion marks**. If it has uncommitted changes here, do **not** `git checkout` it: **flag it** to the user (`⚠ tasks.md has uncommitted changes — either an agent violated its scope, or a previous phase left its `[x]` marks uncommitted`). Inspect `git diff -- {$TASKS_PATH}`; if the diff is a prior phase's `[x]` marks, commit it (`chore: commit pending tasks.md marks`) rather than discarding it. Never silently discard.
+
+   For any other tracked file (lines `M` or `A`) that is **not** listed in the task's "Related files" — restore it immediately and log a warning:
    ```
    git checkout HEAD -- <out-of-scope-file>
    ```
@@ -423,7 +427,7 @@ For each task in **tasks.md order**:
       {plugin_root}/scripts/verify-task.ps1 {current_branch} {PHASE_BRANCH} {TASK_ID} {SCOPE_GLOBS...}
       ```
       `{SCOPE_GLOBS...}` = the task's related-files list passed to the agent. **Exit 0 = verified; any non-zero exit = the task is INCOMPLETE.** (See "Verifying task completion" in Rules for the criterion and the manual fallback if the script cannot run.)
-   d. Run `git status --short` — check for stray changes. For any modified file NOT in the task's related-files list, restore it: `git checkout HEAD -- <file>` and log a warning. If an in-scope change was left uncommitted, commit it onto `PHASE_BRANCH` as `feat({TASK_ID}): ...` and re-run step (c).
+   d. Run `git status --short` — check for stray changes. For any modified file NOT in the task's related-files list, restore it: `git checkout HEAD -- <file>` and log a warning — **except** `.claude/worktrees/`, `.claude/agent-memory/` and **`$TASKS_PATH` (`specs/*/tasks.md`)**, which are never restored. Restoring `tasks.md` destroys completion marks: if it has uncommitted changes, **flag it** to the user (an agent violated its scope, or a previous phase left its `[x]` marks uncommitted) and commit those marks instead of discarding them. If an in-scope change was left uncommitted, commit it onto `PHASE_BRANCH` as `feat({TASK_ID}): ...` and re-run step (c).
    e. **Do NOT merge into the feature branch and do NOT mark `[x]`** — both happen once at Step 7.5 after CHECKS pass.
    f. If step (c) exits non-zero → mark task as `✗ INCOMPLETE`, print the script's stderr verbatim, and **STOP**: report to the user and ask how to proceed. An empty commit, a commit that changes nothing, or a commit touching only files outside the task's SCOPE all land here — they are **not** success.
 5. On any other error → **STOP** (do not run the next task without user confirmation)
@@ -465,9 +469,22 @@ the merge exactly once.
    treat the phase as broken: report the exact command the user must run themselves and
    carry on to step 4.
 
-4. **Mark tasks complete** — only **after** a successful merge, replace `- [ ] {TASK_ID}` →
-   `- [x] {TASK_ID}` in `$TASKS_PATH` for **every** task run in this phase (parallel and
-   sequential). Manual/`⊘ MANUAL` tasks (Step 4.5) stay `[ ]`.
+4. **Mark tasks complete — and COMMIT the marks** — only **after** a successful merge, replace
+   `- [ ] {TASK_ID}` → `- [x] {TASK_ID}` in `$TASKS_PATH` for **every** task run in this phase
+   (parallel and sequential). Manual/`⊘ MANUAL` tasks (Step 4.5) stay `[ ]`.
+
+   Then **immediately commit `tasks.md`** on the feature branch, as its own commit:
+   ```
+   git checkout {current_branch}
+   git add {$TASKS_PATH}
+   git commit -m "chore(phase-{N}): mark {TASK_ID list} complete"
+   ```
+   ⚠ **Leaving `tasks.md` uncommitted is a BUG, not a cosmetic omission.** The marks live only
+   in the working tree, and this skill's own out-of-scope restore (Steps 6.1 / 7.4d / Rules →
+   "Verifying task completion") runs `git checkout HEAD -- <file>` on the next phase — which
+   reverts them. Observed in production: Phase 1 marked T001–T004 `[x]` uncommitted, Phase 2's
+   cleanup reverted `tasks.md`, and T001–T004 silently went back to `[ ]` while Phase 2's own
+   (committed) marks survived — the phase looked unrun. Mark **and** commit in the same step.
 
 ### Step 8: Final report
 
@@ -484,6 +501,8 @@ Print the task summary table:
   ───────────────────────────────────────────────
   Phase checks (ONCE):   Pint ✓   PHPStan ✓ (changed files)   Tests ✓
   Phase merge (ONCE):    {PHASE_BRANCH} → {current_branch} (--no-ff)
+  tasks.md marks:        {commit_sha} chore(phase-{N}): mark {TASK_ID list} complete
+                         {or ✗ NOT COMMITTED — marks will be lost on the next phase}
   Migrations:            {none | M new → dev DB migrated ✓ | M new → RUN MANUALLY: {cmd}}
 ═══════════════════════════════════════════════════
   Total: {N_ok}/{N_total} completed   Wall time: {total_wall_time}
@@ -495,6 +514,7 @@ Print the task summary table:
 - **tokens** — parse `subagent_tokens` from the agent result's `<usage>` block.
 - **Phase checks line** — Pint / PHPStan / Tests are reported **ONCE** for the whole phase (not per task), taken from the `task-git --phase-action=CHECKS` output at Step 7.5. Per-task rows no longer carry per-task check marks (checks were deferred).
 - **Phase merge line** — the single `--no-ff` merge from Step 7.5.
+- **tasks.md marks line** — the `chore(phase-{N}): mark ... complete` commit from Step 7.5 item 4; take the sha from `git log -1 --format=%h -- {$TASKS_PATH}` on `{current_branch}`. If `git status --short -- {$TASKS_PATH}` is still dirty, report `✗ NOT COMMITTED` here — this is a data-loss condition, not a cosmetic gap, so surface it in the report instead of letting it be discovered a phase later.
 - **skipped tasks** — show only task ID and "skipped (already [x])"; no timing or tokens.
 - **Wall time** — sum of all `duration_ms` values (parallel tasks count once, not summed).
 
@@ -540,7 +560,7 @@ Bash("curl -s -o /dev/null -d \"Phase {N} complete: {N_ok}/{N_total}\" https://n
 - **Checks run ONCE per phase** (Step 7.5): Pint + PHPStan(changed files) + Tests, deferred from each task via `--defer-checks`.
 - **The phase branch merges into the feature branch exactly ONCE** (Step 7.5, `--no-ff`), only after CHECKS pass. **NEVER** into development. **PROHIBITED: `--squash`.**
 - A pre-existing `{phase_branch_prefix}{N}` belonging to a **different** feature must be renamed to `…-stale` before the phase branch is created (Step 5.55) — never build a phase on an obsolete base, and never delete the old branch.
-- Tasks are marked `[x]` in tasks.md **only after** the phase merge succeeds.
+- Tasks are marked `[x]` in tasks.md **only after** the phase merge succeeds — and the mark **MUST be committed in the same step** (`chore(phase-{N}): mark ... complete`); an uncommitted tasks.md is destroyed by the next phase's cleanup.
 - If the phase added migrations, the dev database must be migrated (or the exact command surfaced to the user) after the merge — **never silently** (Step 7.5.3).
 
 ### Parallelism is OPT-IN
@@ -596,7 +616,7 @@ report rather than presenting the task as fully verified.
 
 Around that check, still:
 - `git checkout {PHASE_BRANCH}` first — the integration target for the whole phase. Never merge into the feature branch here.
-- `git status --short` — no tracked uncommitted files (ignore untracked agent scratch: `.claude/worktrees/`, `.claude/agent-memory/`). Restore any stray out-of-scope TRACKED changes with `git checkout HEAD -- <file>`; commit any in-scope leftover onto `PHASE_BRANCH` and re-run the script.
+- `git status --short` — no tracked uncommitted files (ignore untracked agent scratch: `.claude/worktrees/`, `.claude/agent-memory/`). Restore any stray out-of-scope TRACKED changes with `git checkout HEAD -- <file>`; commit any in-scope leftover onto `PHASE_BRANCH` and re-run the script. **Exclusion: never restore `$TASKS_PATH` (`specs/*/tasks.md`)** — that reverts completion marks. If it is dirty, **flag it** (scope violation by an agent, or a prior phase's uncommitted `[x]` marks) and commit the marks; do not discard them.
 - For `[P]` tasks under `--parallel`: if the worktree branch was not merged back into `PHASE_BRANCH`, merge it with `scripts/merge-back.{sh,ps1} {PHASE_BRANCH} {branch} {TASK_ID}` (exit 0 = merged or already merged; exit 1 = conflict → **STOP** with the listed files) — NEVER into the feature branch.
 
 **Fallback if the script cannot run** (missing interpreter, `plugin_root` unresolved,
