@@ -5,9 +5,11 @@ description: >-
   to run in parallel ([P]-marker) and which sequentially — and calls
   the corresponding agents (task-runner-parallel or task-runner).
   Use /phase-runner 4 or /phase-runner "Phase 4" for full execution
-  of all phase tasks with correct parallelism. Indispensable when you need to run
-  an entire phase with one command without manually parsing tasks.
-argument-hint: "<phase-number-or-name>"
+  of all phase tasks with correct parallelism. Accepts several phases
+  (/phase-runner 4 5 6) — they run sequentially without a confirmation prompt.
+  Indispensable when you need to run an entire phase with one command
+  without manually parsing tasks.
+argument-hint: "<phase-number-or-name> [more-phases...] [--auto|--yes|--no-confirm]"
 allowed-tools: Agent Read Grep Glob Skill AskUserQuestion Edit Bash PowerShell TodoWrite
 model: haiku
 metadata:
@@ -34,14 +36,17 @@ Checks are deferred to phase level via `--defer-checks` on each task and run via
 
 ## Required argument
 
-`$ARGUMENTS` **MUST** contain a phase number or name.
+`$ARGUMENTS` **MUST** contain at least one phase number or name.
 
 Accepted formats:
 - `4`
 - `Phase 4`
 - `phase 4`
+- **Several phases:** `4 5 6`, `Phase 4, Phase 5`, `3-5` (inclusive range)
 
-If `$ARGUMENTS` is empty — **STOP** and ask the user:
+Optional flags: `--auto`, `--yes`, `-y`, `--no-confirm` — skip the confirmation prompt.
+
+If `$ARGUMENTS` contains no phase number — **STOP** and ask the user:
 > Specify the phase number: `/phase-runner 4`
 
 ---
@@ -50,8 +55,19 @@ If `$ARGUMENTS` is empty — **STOP** and ask the user:
 
 ### Step 1: Parse the argument
 
-1. Extract the phase number from `$ARGUMENTS` (first digit or number)
-2. If not found — stop and ask the user to specify
+1. Strip the flags `--auto` / `--yes` / `-y` / `--no-confirm` from `$ARGUMENTS`; if any was present set **`AUTO_CONFIRM = true`**.
+2. Extract **all** phase numbers from the remainder, in the order given: every `\d+`, plus ranges `N-M` expanded to `N, N+1, …, M`. Ignore a trailing spec identifier (Step 2a) when it is a known spec name/number rather than a phase.
+3. Save the ordered, de-duplicated list as **`$PHASES`**.
+4. If `$PHASES` is empty — stop and ask the user to specify.
+5. **If `$PHASES` contains more than one phase → set `AUTO_CONFIRM = true`.** Running several phases is itself an explicit instruction to proceed without asking.
+
+### Step 1.5: Multi-phase loop
+
+If `$PHASES` has more than one entry, run Steps 2–8 **for each phase in order**, fully completing one phase (CHECKS + MERGE + marking `[x]`) before starting the next. Resolve `$TASKS_PATH` once (Step 2) and reuse it for all phases. Each phase gets its own `PHASE_BRANCH`.
+
+Stop the whole run (do not start the remaining phases) if a phase ends with an INCOMPLETE task, a CHECKS failure, or a merge conflict — report which phases completed and which were not attempted. A phase that is already fully `[x]` is skipped and does not stop the loop.
+
+After the last phase, print one combined final report (Step 8) with a per-phase section.
 
 ### Step 2: Load tasks.md (resolve the ACTIVE spec — there are usually many)
 
@@ -115,6 +131,7 @@ Show the user the plan before starting:
 ═══════════════════════════════════════════════════
   Phase Runner: Phase {N}   →   branch {phase_branch_prefix}{N}
 ═══════════════════════════════════════════════════
+  Queue: {$PHASES joined}  (phase {i} of {total})     ← only when >1 phase
   Model: 1 phase branch → {pending} tasks → 1 CHECKS → 1 merge
   Total tasks: {total}  |  Skipped (done): {done}
   To run: {pending}
@@ -133,12 +150,16 @@ Show the user the plan before starting:
     4. CHECKS: Pint + PHPStan + Tests (ONCE)
     5. Merge {phase_branch_prefix}{N} → {current_branch} (--no-ff, ONCE)
 ═══════════════════════════════════════════════════
-Start? (yes/no)
+Start? (yes/no)          ← omit this line entirely when AUTO_CONFIRM = true
 ```
 
 If the phase has **only parallel** or **only sequential** tasks — show the appropriate simplified plan.
 
-Ask for confirmation via **AskUserQuestion** before starting.
+**Confirmation:**
+- If **`AUTO_CONFIRM = true`** (several phases were requested, or `--auto` / `--yes` / `-y` / `--no-confirm` was passed) → **do NOT call AskUserQuestion**. Print the plan followed by `Auto-confirmed ({reason: multiple phases | --auto flag}) — starting.` and proceed straight to Step 5.5.
+- Otherwise (a single phase, no flag) → ask for confirmation via **AskUserQuestion** before starting.
+
+`AUTO_CONFIRM` suppresses only this start-of-phase prompt. It never suppresses the **STOP** points (errors, INCOMPLETE tasks, failed CHECKS, merge conflicts, ambiguous spec at Step 2d) — those still halt and ask.
 
 ### Step 5.5: Pre-flight git health + resolve the feature branch & task-branch naming
 
