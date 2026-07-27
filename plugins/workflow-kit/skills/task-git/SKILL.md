@@ -10,7 +10,7 @@ argument-hint: "<task-id|phase-number> [--scope=task|phase] [--phase=CREATE|COMM
 allowed-tools: Bash(git *) Read Grep Glob AskUserQuestion
 metadata:
   author: speckit
-  version: "1.0"
+  version: "1.1"
   category: git-workflow
 ---
 
@@ -289,8 +289,14 @@ action), then ONE `--no-ff` merge into the feature branch. Driven exclusively by
 **Condition**: currently on FEATURE_BRANCH, PHASE_BRANCH does not exist.
 
 1. Ensure the working tree is clean (`git status --porcelain` empty). If dirty — **STOP**.
-2. `git checkout -b {PHASE_BRANCH}`
-3. Output:
+2. If `{PHASE_BRANCH}` **already exists**, `git checkout -b` will fail. Do **not** force it and
+   do **not** delete the branch: `{phase_branch_prefix}{N}` is a flat, reusable name, so a
+   leftover `phase/4` from an *earlier feature* is common and building on it would put this
+   phase's commits on an obsolete base. **STOP** and report the collision — `phase-runner`
+   resolves it before calling CREATE (Step 5.55: rename the foreign branch to `…-stale`, or
+   reuse it when it genuinely belongs to this feature).
+3. `git checkout -b {PHASE_BRANCH}`
+4. Output:
 ```
 ✓ Phase branch created: {PHASE_BRANCH} (from {FEATURE_BRANCH})
   All Phase {PHASE_NUM} tasks will be committed here; CHECKS + merge run once at the end.
@@ -351,6 +357,12 @@ Output:
   Merge commit: feat(phase-{PHASE_NUM}): merge phase {PHASE_NUM} into feature branch
   Branch {PHASE_BRANCH} retained for history.
 ```
+6. If the merged diff contains new migrations
+   (`git diff --name-only {FEATURE_BRANCH}@{1}..{FEATURE_BRANCH} -- "*database/migrations/*.php"`
+   is non-empty), report them in the output. The phase tests ran on `RefreshDatabase`, i.e. a
+   throwaway schema — the **dev database is not migrated**. This skill does not run
+   migrations (it works only with git); `phase-runner` applies `commands.migrate` right after
+   MERGE (its Step 7.5.3). Never let new migrations pass unmentioned.
 
 ---
 
