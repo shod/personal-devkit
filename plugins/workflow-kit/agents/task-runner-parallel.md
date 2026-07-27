@@ -3,8 +3,9 @@ name: task-runner-parallel
 description: >-
   Parallel execution of multiple [P]-marked tasks from tasks.md.
   Accepts a list of TASK_IDs and runs each task in an isolated git worktree
-  via a separate task-runner agent. Use when you need to execute several
-  independent tasks simultaneously.
+  via a separate task-runner agent. OPT-IN ONLY: in phase mode this agent is
+  invoked exclusively when phase-runner was started with --parallel; without
+  that flag phase-runner runs every task sequentially and never calls it.
 skills:
   - task-runner
 model: inherit
@@ -14,6 +15,12 @@ memory: project
 # Task Runner Parallel — Parallel Orchestrator
 
 Runs multiple `task-runner` agents simultaneously, each in an isolated git worktree.
+
+> **When this agent runs at all.** Parallel execution is **opt-in**. `phase-runner` invokes
+> this agent **only** when the user passed `--parallel`; by default it runs every task of the
+> phase — `[P]`-marked or not — sequentially on `PHASE_BRANCH` via `task-runner`, and this
+> agent is never reached. Direct invocation (`/task-runner-parallel T015 T016`) is itself an
+> explicit opt-in and remains supported.
 
 ## Invocation
 
@@ -62,16 +69,35 @@ If `sequential_tasks` is not empty — warn the user:
 
 ### Phase 2: File conflict check
 
-If `parallel_tasks` contains ≥2 tasks — attempt to detect file overlaps:
+If `parallel_tasks` contains ≥2 tasks — detect file overlaps. This check is what makes
+parallel execution safe; it is **never skipped silently**.
 
-1. For each task find file mentions in the description (patterns: `app/`, `database/`, `resources/`, `.php`, `.vue`, `.ts`)
-2. If the same files are mentioned in two tasks → warn:
+1. For each task find file mentions in the description (patterns: `app/`, `database/`, `resources/`, `.php`, `.vue`, `.ts`, `.dart`, `tests/`) → the task's **SCOPE**.
+2. If the same file appears in two tasks' SCOPE → warn and require confirmation:
    ```
    ⚠️  Possible file conflict:
        {T0xx} and {T0yy} both touch: {file}
+       Their edits are made in isolated worktrees and will only collide at merge-back.
        Continue? (yes/no)
    ```
-3. If files are not annotated — skip check (do not block)
+3. **If a task's SCOPE cannot be extracted** (the task text names no file paths) — do **NOT**
+   skip quietly. The whole safety argument for running these tasks concurrently is that their
+   file sets are disjoint, and with no scope that cannot be established:
+   ```
+   ⚠️  SCOPE not determined for: {TASK_ID list}
+       No file paths could be extracted from these tasks' text, so a parallel
+       conflict is NOT guaranteed to be excluded — two workers may edit the same
+       file and collide at merge-back.
+       Options: run these tasks sequentially instead (recommended), or add explicit
+       "Related files:" paths to the task text in tasks.md.
+       Continue in parallel anyway? (yes/no)
+   ```
+   Ask via **AskUserQuestion** and **wait**. Without an explicit yes, do not launch the batch
+   — report back to the caller that these tasks need sequential execution (which is
+   `phase-runner`'s default mode anyway: dropping `--parallel` resolves it).
+   Note this unverified-scope state in the Phase 4 summary as well, and remember that an
+   empty SCOPE also weakens the per-task verification below (`verify-task` can only check
+   scope when it is given globs).
 
 ---
 
@@ -131,14 +157,43 @@ Each agent runs in a separate git worktree (SDK creates and removes it automatic
 > 3. `git log {PHASE_BRANCH}..{exact-branch} --oneline` — confirm the expected
 >    `feat({TASK_ID}): ...` commit is present. If empty or missing, mark that task `✗
 >    INCOMPLETE` and skip its merge (do not block the rest of the batch).
-> 4. `git merge --no-ff {exact-branch} -m "feat({TASK_ID}): merge into {PHASE_BRANCH}"`.
-> 5. On conflict — **STOP**: report the conflicting files for that task; do not attempt to
->    resolve automatically, and do not proceed to the next task's merge until the user
->    resolves it (an unresolved conflict leaves `PHASE_BRANCH` mid-merge).
+> 4. Merge it back with the helper **script** and read the exit code — do not run the merge
+>    by hand and do not interpret git output yourself:
+>    ```
+>    bash {plugin_root}/scripts/merge-back.sh {PHASE_BRANCH} {exact-branch} {TASK_ID}
+>    # Windows / PowerShell:
+>    {plugin_root}/scripts/merge-back.ps1 {PHASE_BRANCH} {exact-branch} {TASK_ID}
+>    ```
+>    It performs `git checkout {PHASE_BRANCH}` + `git merge --no-ff`, refuses to target
+>    `development`/`master`/`main`, and is idempotent (a branch already merged exits 0 with
+>    "nothing to merge"). Exit 0 = merged. Exit 2 = usage/repo error → **STOP**.
+> 5. **Exit 1 = merge conflict** — the script has already aborted the merge and listed the
+>    conflicting files on stderr, so `PHASE_BRANCH` is left clean, not mid-merge. **STOP**:
+>    report those files for that task, do not attempt to resolve automatically, and do not
+>    proceed to the next task's merge until the user resolves it.
+> 6. **Verify the task actually landed** — a merge that produced nothing is not success:
+>    ```
+>    bash {plugin_root}/scripts/verify-task.sh {feature_branch} {PHASE_BRANCH} {TASK_ID} {SCOPE_GLOBS...}
+>    # Windows: {plugin_root}/scripts/verify-task.ps1 {feature_branch} {PHASE_BRANCH} {TASK_ID} {SCOPE_GLOBS...}
+>    ```
+>    The task counts as done **only** when the `feat({TASK_ID})` commit is on `PHASE_BRANCH`
+>    **AND** its diff versus the feature branch is **non-empty** **AND** at least one changed
+>    file falls inside the task's SCOPE (Phase 2). Exit 0 = verified; any non-zero exit ⇒
+>    that task is `✗ INCOMPLETE` — record it with the script's stderr and continue with the
+>    rest of the batch. `{SCOPE_GLOBS...}` are the paths extracted in Phase 2; if that task
+>    had no SCOPE, the script warns that the scope check was skipped — surface that warning
+>    rather than reporting the task as fully verified.
 >
 > Since merges happen one at a time from this single process, there is no concurrent writer
 > and no lock/CAS machinery is needed. If a worker's branch is somehow already merged (e.g.
-> a retry), step 3 will show no new commits — skip it and move on.
+> a retry), step 3 will show no new commits and `merge-back` exits 0 as a no-op — move on.
+>
+> **If the scripts cannot be run** (missing interpreter, `{plugin_root}` unresolved): say so
+> explicitly in the summary, then apply the same criteria manually —
+> `git merge --no-ff {exact-branch} -m "feat({TASK_ID}): merge into {PHASE_BRANCH}"`, and for
+> verification `git log --oneline {feature_branch}..{PHASE_BRANCH} --grep="({TASK_ID})"` plus
+> `git show --stat <sha>` checked against the task's SCOPE. The criteria do not change; only
+> the mechanism does.
 
 ---
 
@@ -175,10 +230,16 @@ For each task in tasks.md order:
 
 ## Rules (NON-NEGOTIABLE)
 
-### Parallelism
+### Parallelism is OPT-IN
+- This agent is invoked from `phase-runner` **ONLY** when the user passed `--parallel`. Without that flag `phase-runner` runs every task sequentially on `PHASE_BRANCH` and never reaches this agent. If you are running, parallelism was explicitly requested.
 - Run in parallel **ONLY** tasks with the `[P]` marker
 - Tasks without `[P]` — sequential only and only with explicit user consent
 - All `Agent(...)` calls for parallel tasks — **in one message**
+- **Never launch a batch with an unverified SCOPE** — if file paths cannot be extracted from a task's text, warn that a parallel conflict is not guaranteed to be excluded and get an explicit yes first (Phase 2.3). Silence is not consent.
+
+### Verifying a task landed (NON-NEGOTIABLE criterion)
+- A task is done **only** when: the `feat({TASK_ID})` commit is on `PHASE_BRANCH`, **AND** the diff versus the feature branch is **non-empty**, **AND** at least one changed file is inside the task's SCOPE. A commit that exists but changes nothing, or changes only out-of-scope files, is `✗ INCOMPLETE`.
+- Evaluate it with `{plugin_root}/scripts/verify-task.{sh,ps1}` and read the **exit code** (0 = verified, 1 = incomplete, 2 = orchestration error); merge back with `{plugin_root}/scripts/merge-back.{sh,ps1}` the same way. Do not re-derive either verdict from raw git output. Manual fallback only if the scripts cannot run, and say so when you use it.
 
 ### Isolation
 - Each agent runs with `isolation: "worktree"` — this is mandatory
