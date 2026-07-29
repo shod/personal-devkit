@@ -45,7 +45,7 @@ Accepts a list of TASK_IDs in any format:
 ### Phase 1: Parse and validate
 
 1. Extract all TASK_IDs (pattern `T\d+`) from prompt
-1a. Extract mode flags from the prompt: **SCOPE** (`--scope=phase` → `phase`, else `task`), **DEFER_CHECKS** (`--defer-checks`/`--no-pint` → `true`), and **PHASE_BRANCH** (when in phase mode, read from the context block, e.g. `phase/3`). In `phase` mode every spawned `task-runner` must receive `--scope=phase --defer-checks` and the `PHASE_BRANCH`, and merges its worktree branch **back into `PHASE_BRANCH`** — never into the feature branch or development.
+1a. Extract mode flags from the prompt: **SCOPE** (`--scope=phase` → `phase`, else `task`), **DEFER_CHECKS** (`--defer-checks`/`--no-pint` → `true`), and **PHASE_BRANCH** (when in phase mode, read from the context block verbatim, e.g. `phase/3-007-bookings-export-fields` — never rebuild it from the phase number). In `phase` mode every spawned `task-runner` must receive `--scope=phase --defer-checks` and the `PHASE_BRANCH`, and merges its worktree branch **back into `PHASE_BRANCH`** — never into the feature branch or development.
 2. If no TASK_IDs found → **STOP**: "No task IDs specified (format: T015 T016 T018)"
 3. Find `specs/*/tasks.md` (current feature)
 4. For each TASK_ID:

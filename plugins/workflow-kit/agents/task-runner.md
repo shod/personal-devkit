@@ -48,7 +48,7 @@ Extract from the delegation prompt:
 - **AUTO_MODE** (`--auto` present → `true`)
 - **SCOPE** (`--scope=phase` present → `phase`, otherwise `task`)
 - **DEFER_CHECKS** (`--defer-checks` or `--no-pint` present → `true`)
-- **PHASE_BRANCH** (in phase mode, passed in the prompt context, e.g. `phase/3`)
+- **PHASE_BRANCH** (in phase mode, passed in the prompt context, e.g. `phase/3-007-bookings-export-fields` — use the string verbatim, do not reconstruct it from the phase number)
 
 1. TASK_ID found → find task in `specs/*/tasks.md`
    - Task found and `[ ]` → start workflow
@@ -161,7 +161,8 @@ Output:
 ## Phase mode workflow (SCOPE=phase)
 
 Used when `phase-runner` orchestrates a whole phase on a single `{PHASE_BRANCH}` (e.g.
-`phase/3`). The phase branch is created **once** by `phase-runner` (not here); this agent
+`phase/3-007-bookings-export-fields`). The phase branch is created **once** by `phase-runner`
+(not here) and its exact name is passed in the prompt context — never re-derive it; this agent
 only **implements one task and commits it onto the phase branch**. Checks and the
 feature-branch merge happen **once per phase**, after all tasks — never here.
 
@@ -212,8 +213,9 @@ and Tests (they run once at the phase CHECKS step).
 ### Phase-mode Phase 3 — commit onto the phase branch
 
 Call **Skill tool**: `task-git` with `{TASK_ID} --scope=phase --phase-action=COMMIT
---auto`. The commit scope label stays `{TASK_ID}` (`feat({TASK_ID}): ...`). **Do not**
-merge into the feature branch.
+--phase-branch={PHASE_BRANCH} --auto`. Pass `PHASE_BRANCH` through verbatim so the skill does
+not re-derive the name. The commit scope label stays `{TASK_ID}` (`feat({TASK_ID}): ...`).
+**Do not** merge into the feature branch.
 
 ### Phase-mode Phase 4 — no merge
 

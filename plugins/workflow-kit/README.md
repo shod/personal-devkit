@@ -25,6 +25,11 @@ Framework-agnostic dev workflow skills + workflow agents.
 - `paths.phase_branch_prefix`, `paths.task_branch_prefix`
 - `commands.*` (Docker/tests/lint/artisan — so agents never hand-write them)
 
+Phase branches are named **`{phase_branch_prefix}{N}-{feature-slug}`** (e.g.
+`phase/3-007-bookings-export-fields`), where the slug is the spec directory holding the
+`tasks.md` being run. The slug makes the name unique per feature, so a leftover `phase/3`
+from another spec can never be reused by accident.
+
 Projects without that file: either add one, or use `task-work` directly (it does
 not require it). horoscope does NOT have `.claude-project.json` yet — add one
 before using phase-runner there.

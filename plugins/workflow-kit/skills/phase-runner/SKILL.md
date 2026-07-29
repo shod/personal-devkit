@@ -14,14 +14,15 @@ allowed-tools: Agent Read Grep Glob Skill AskUserQuestion Edit Bash PowerShell T
 model: sonnet
 metadata:
   author: speckit
-  version: "1.2"
+  version: "1.3"
   category: task-orchestration
 ---
 
 # Phase Runner — Task Phase Orchestrator
 
 Reads tasks.md, determines which tasks belong to the requested phase, and runs the whole
-phase on **ONE phase branch** (`{phase_branch_prefix}{N}`, e.g. `phase/3`):
+phase on **ONE phase branch** (`{phase_branch_prefix}{N}-{feature-slug}`, e.g.
+`phase/3-007-bookings-export-fields`):
 - Create the phase branch **once** (from the feature branch).
 - Run all phase tasks ON it — one commit per task (traceability preserved):
   - **By default (no `--parallel`): every task runs SEQUENTIALLY** directly on the phase
@@ -145,9 +146,13 @@ Build the execution schedule by walking tasks in **tasks.md order**.
 sequential and commits directly onto `PHASE_BRANCH`, in tasks.md order. Manual tasks
 (Step 4.5) are listed separately as `⊘ MANUAL`. Show:
 
+> In the plan templates below, `{PHASE_BRANCH}` is `{phase_branch_prefix}{N}-{feature-slug}`
+> (Step 5.5). The slug comes from `$TASKS_PATH`, already resolved at Step 2, so print the
+> **real branch name** here — never a placeholder or the bare `{phase_branch_prefix}{N}`.
+
 ```
 ═══════════════════════════════════════════════════
-  Phase Runner: Phase {N}   →   branch {phase_branch_prefix}{N}
+  Phase Runner: Phase {N}   →   branch {PHASE_BRANCH}
 ═══════════════════════════════════════════════════
   Queue: {$PHASES joined}  (phase {i} of {total})     ← only when >1 phase
   Mode: SEQUENTIAL (default — pass --parallel to enable [P] batching)
@@ -155,20 +160,20 @@ sequential and commits directly onto `PHASE_BRANCH`, in tasks.md order. Manual t
   Total tasks: {total}  |  Skipped (done): {done}
   To run: {pending}
 
-  ▶ Sequential onto {phase_branch_prefix}{N}:
+  ▶ Sequential onto {PHASE_BRANCH}:
     {T009} — {description}
     {T010} — {description}   [P in tasks.md — running sequentially]
     {T011} — {description}   [P in tasks.md — running sequentially]
     {T012} — {description}
 
   Execution order (tasks.md order, one task at a time):
-    0. Create branch {phase_branch_prefix}{N}
+    0. Create branch {PHASE_BRANCH}
     1. {T009} — sequential onto PHASE_BRANCH
     2. {T010} — sequential onto PHASE_BRANCH
     3. {T011} — sequential onto PHASE_BRANCH
     4. {T012} — sequential onto PHASE_BRANCH
     5. CHECKS: Pint + PHPStan + Tests (ONCE)
-    6. Merge {phase_branch_prefix}{N} → {current_branch} (--no-ff, ONCE)
+    6. Merge {PHASE_BRANCH} → {current_branch} (--no-ff, ONCE)
 ═══════════════════════════════════════════════════
 Start? (yes/no)          ← omit this line entirely when AUTO_CONFIRM = true
 ```
@@ -186,7 +191,7 @@ T009 (sequential) → [T010, T011] (parallel batch) → T012 (sequential)
 
 ```
 ═══════════════════════════════════════════════════
-  Phase Runner: Phase {N}   →   branch {phase_branch_prefix}{N}
+  Phase Runner: Phase {N}   →   branch {PHASE_BRANCH}
 ═══════════════════════════════════════════════════
   Queue: {$PHASES joined}  (phase {i} of {total})     ← only when >1 phase
   Mode: PARALLEL (--parallel) — [P] tasks run in isolated worktrees
@@ -201,12 +206,12 @@ T009 (sequential) → [T010, T011] (parallel batch) → T012 (sequential)
     {sequential_tasks list with descriptions}
 
   Execution order (tasks.md order, [P] groups fire simultaneously):
-    0. Create branch {phase_branch_prefix}{N}
+    0. Create branch {PHASE_BRANCH}
     1. {T009} — sequential       (commit onto phase branch)
     2. {T010, T011} — parallel batch (worktrees → merged back into phase branch)
     3. {T012} — sequential       (commit onto phase branch)
     4. CHECKS: Pint + PHPStan + Tests (ONCE)
-    5. Merge {phase_branch_prefix}{N} → {current_branch} (--no-ff, ONCE)
+    5. Merge {PHASE_BRANCH} → {current_branch} (--no-ff, ONCE)
 ═══════════════════════════════════════════════════
 Start? (yes/no)          ← omit this line entirely when AUTO_CONFIRM = true
 ```
@@ -231,9 +236,23 @@ Before starting any tasks:
 
 2. **Resolve `{current_branch}` from git, NOT from config.** Run `git branch --show-current` and use that as `{current_branch}`. ⚠️ Do **not** trust the `feature_branch` key in `.claude-project.json` — it is frequently STALE (e.g. it may name an old feature branch while the real working branch differs). The branch you are checked out on is the source of truth. Pass this resolved branch to every agent.
 3. **Resolve the phase-branch name and the (ephemeral) task-branch prefix.**
-   - Read `phase_branch_prefix` from `.claude-project.json` `paths` (e.g. `phase/`). Set **`PHASE_BRANCH = {phase_branch_prefix}{N}`** (e.g. `phase/3`). This is the ONE branch that holds the whole phase. The flat form avoids the nested-ref problem (git cannot create `{current_branch}/...` under an existing `{current_branch}` ref).
+   - **Derive `FEATURE_SLUG` from `$TASKS_PATH`** — the basename of the spec directory holding
+     that `tasks.md` (`specs/007-bookings-export-fields/tasks.md` → `007-bookings-export-fields`).
+     Normalize it for a git ref: lowercase, every character outside `[a-z0-9._-]` → `-`,
+     collapse repeats, trim leading/trailing `-`. Never take the slug from the git branch name
+     or from `.claude-project.json` — `$TASKS_PATH` (resolved in Step 2) is the source of truth,
+     so the branch name always names the spec whose tasks are actually being run.
+   - Read `phase_branch_prefix` from `.claude-project.json` `paths` (e.g. `phase/`). Set
+     **`PHASE_BRANCH = {phase_branch_prefix}{N}-{FEATURE_SLUG}`** (e.g.
+     `phase/3-007-bookings-export-fields`). This is the ONE branch that holds the whole phase.
+     Only the prefix segment is nested; the `{N}-{FEATURE_SLUG}` part stays flat, which avoids
+     the nested-ref problem (git cannot create `{current_branch}/...` under an existing
+     `{current_branch}` ref) while making the name **unique per feature** — a `phase/3` from
+     another feature can no longer collide with this run.
    - Read `task_branch_prefix` (e.g. `task/`). It is needed **only when `PARALLEL_MODE = true`**, for `[P]` **worktree** branches: parallel tasks branch off `PHASE_BRANCH` HEAD as `{task_branch_prefix}{TASK_ID}` and merge **back into `PHASE_BRANCH`** (not the feature branch). In the default sequential mode no task branches are created at all.
-   - Pass `PHASE_BRANCH` explicitly to every agent (and `task_branch_prefix` too, in parallel mode).
+   - Pass `PHASE_BRANCH` explicitly to every agent and to **every `task-git --scope=phase` call
+     (via `--phase-branch={PHASE_BRANCH}`)**, so the name is computed once here and never
+     re-derived downstream (and `task_branch_prefix` too, in parallel mode).
 4. **Resolve `{plugin_root}`** — the `workflow-kit` plugin directory, i.e. the parent of the
    directory holding this SKILL.md's `skills/` tree (`{plugin_root}/skills/phase-runner/SKILL.md`
    is this file). Its `{plugin_root}/scripts/` holds `verify-task.{sh,ps1}` and
@@ -241,43 +260,39 @@ Before starting any tasks:
    `{plugin_root}/scripts/verify-task.sh` exists; if it does not, note it and use the manual
    fallback described in Rules → "Verifying task completion" for the whole run.
 
-### Step 5.55: Guard against a STALE phase branch from a previous feature
+### Step 5.55: Existing-branch check (`{N}-{FEATURE_SLUG}` is unique per feature)
 
-`{phase_branch_prefix}{N}` is a flat, reusable name (`phase/4`) — a phase branch left over
-from an **earlier feature** will very often already exist under exactly that name. Committing
-this phase's work onto it would stack the new commits on an obsolete base and poison both
-CHECKS and the merge. So, **before** Step 5.6:
+Because `PHASE_BRANCH` carries the spec slug, a branch under that exact name can only be
+**this feature's phase {N}** — a previous, interrupted run of this very phase. There is no
+cross-feature collision to resolve anymore. **Before** Step 5.6:
 
 1. `git rev-parse --verify --quiet {PHASE_BRANCH}` — if it does not exist, nothing to do;
    go to Step 5.6.
-2. If it exists, decide whether it belongs to the **current** feature:
-   - `git merge-base {PHASE_BRANCH} {current_branch}` and
-     `git log {merge_base}..{current_branch} --oneline | wc -l` — a large distance (the
-     branch forked long before the current feature's work) means it is not ours.
-   - `git log {current_branch}..{PHASE_BRANCH} --oneline` — if none of those commit
-     subjects reference a task ID (`T\d+`) belonging to **this spec's** `$TASKS_PATH`, it is
-     not ours.
-   - Both signals agreeing on "not ours" (or either one being unambiguous) ⇒ **stale**.
-3. **If stale** — rename it out of the way instead of deleting it (branch deletion is
-   prohibited; history is retained):
-   ```
-   git branch -m {PHASE_BRANCH} {PHASE_BRANCH}-{spec-slug-of-the-old-feature}-stale
-   ```
-   Use the old feature's slug when it can be inferred from that branch's commits, otherwise
-   the current date-free fallback `{PHASE_BRANCH}-stale`; if that name is taken too, append
-   `-2`, `-3`, … Tell the user plainly:
-   > ⚠️ `{PHASE_BRANCH}` already existed and pointed at commits from a different feature.
-   > Renamed to `{new-name}`; creating a fresh `{PHASE_BRANCH}` off `{current_branch}`.
-4. **If it is ours** (this feature's phase branch, e.g. a resumed run) — do **not** rename.
-   Report that the existing phase branch is being reused and let Step 5.6 check it out
-   rather than create it.
+2. If it exists, it is **ours**: do **not** rename and do **not** delete it. Report that the
+   existing phase branch is being reused and let Step 5.6 check it out rather than create it.
+   Before continuing, confirm it is not behind the feature branch:
+   `git log {PHASE_BRANCH}..{current_branch} --oneline` — if non-empty, merge the feature
+   branch into it (`git merge --no-ff {current_branch}`) so the phase builds on current work;
+   on conflict → **STOP** and hand it to the user.
+3. **Legacy flat branch (migration).** Older versions of this skill named the branch
+   `{phase_branch_prefix}{N}` with no slug. Check `git rev-parse --verify --quiet
+   {phase_branch_prefix}{N}`: if such a branch exists, it is **not** used by this run. Leave it
+   untouched — never rename, never delete — and mention it once:
+   > ℹ️ Legacy phase branch `{phase_branch_prefix}{N}` exists (old naming scheme). This run
+   > uses `{PHASE_BRANCH}`. If the legacy branch holds unmerged work for this phase, merge it
+   > yourself before continuing.
+   Only when its commits reference task IDs from **this** `$TASKS_PATH` and are unmerged
+   (`git log {current_branch}..{phase_branch_prefix}{N} --oneline` non-empty) → **STOP** and
+   ask the user how to proceed, rather than silently starting a second branch for the same
+   phase.
 
 ### Step 5.6: Create the phase branch (ONCE)
 
-Before running any task, create the phase branch from the feature branch:
+Before running any task, create the phase branch from the feature branch. Always pass the
+resolved name — `task-git` must not re-derive it:
 
 ```
-Skill: task-git "{N} --scope=phase --phase-action=CREATE --auto"
+Skill: task-git "{N} --scope=phase --phase-action=CREATE --phase-branch={PHASE_BRANCH} --auto"
 ```
 
 Then verify: `git branch --show-current` **MUST** equal `PHASE_BRANCH`. If not → **STOP**
@@ -439,7 +454,7 @@ the merge exactly once.
 
 1. **CHECKS** — run Pint + PHPStan + Tests once for the whole phase:
    ```
-   Skill: task-git "{N} --scope=phase --phase-action=CHECKS --auto"
+   Skill: task-git "{N} --scope=phase --phase-action=CHECKS --phase-branch={PHASE_BRANCH} --auto"
    ```
    This runs `commands.pint` (auto-fix → commit `style(phase-{N}): pint` if it changed files), then `commands.phpstan` on changed files only, then `commands.test`.
    - On any failure (unfixable Pint violations, PHPStan errors in changed files, or failing tests) the skill **STOPs** and leaves `PHASE_BRANCH` **unmerged**. When this happens → **STOP**, surface the failure to the user, and do **not** merge or mark any task `[x]`.
@@ -447,7 +462,7 @@ the merge exactly once.
 
 2. **MERGE** — merge the phase branch into the feature branch once:
    ```
-   Skill: task-git "{N} --scope=phase --phase-action=MERGE --auto"
+   Skill: task-git "{N} --scope=phase --phase-action=MERGE --phase-branch={PHASE_BRANCH} --auto"
    ```
    This does `git checkout {current_branch}; git merge --no-ff {PHASE_BRANCH}`. **Never** into development. On conflict the skill **STOPs** — surface it and do not mark `[x]`.
 
@@ -555,11 +570,11 @@ Bash("curl -s -o /dev/null -d \"Phase {N} complete: {N_ok}/{N_total}\" https://n
 ## Rules (NON-NEGOTIABLE)
 
 ### Branch-per-Phase model (the core invariant)
-- **ONE `PHASE_BRANCH` (`{phase_branch_prefix}{N}`) per phase**, created ONCE (Step 5.6) from the feature branch.
+- **ONE `PHASE_BRANCH` (`{phase_branch_prefix}{N}-{FEATURE_SLUG}`, e.g. `phase/3-007-bookings-export-fields`) per phase**, created ONCE (Step 5.6) from the feature branch. The slug is the spec directory of `$TASKS_PATH` — resolved once at Step 5.5 and passed verbatim to every agent and `task-git` call (`--phase-branch=`); nothing downstream re-derives it.
 - **Every** task in the phase is committed onto `PHASE_BRANCH` (one commit per task — `feat({TASK_ID}): ...`). In the default sequential mode the agent commits straight onto `PHASE_BRANCH`. Only under `--parallel` do `[P]` tasks use isolated worktrees branched off `PHASE_BRANCH` HEAD; workers commit there only, and `task-runner-parallel` merges every worktree branch **back into `PHASE_BRANCH` itself, sequentially, one at a time** (never the workers, never concurrently) — NOT into the feature branch.
 - **Checks run ONCE per phase** (Step 7.5): Pint + PHPStan(changed files) + Tests, deferred from each task via `--defer-checks`.
 - **The phase branch merges into the feature branch exactly ONCE** (Step 7.5, `--no-ff`), only after CHECKS pass. **NEVER** into development. **PROHIBITED: `--squash`.**
-- A pre-existing `{phase_branch_prefix}{N}` belonging to a **different** feature must be renamed to `…-stale` before the phase branch is created (Step 5.55) — never build a phase on an obsolete base, and never delete the old branch.
+- Because the name carries the feature slug, a pre-existing `PHASE_BRANCH` can only be **this** feature's interrupted phase — reuse it (Step 5.55), never rename or delete it. A legacy flat `{phase_branch_prefix}{N}` from the old naming scheme is left untouched and is never built on.
 - Tasks are marked `[x]` in tasks.md **only after** the phase merge succeeds — and the mark **MUST be committed in the same step** (`chore(phase-{N}): mark ... complete`); an uncommitted tasks.md is destroyed by the next phase's cleanup.
 - If the phase added migrations, the dev database must be migrated (or the exact command surfaced to the user) after the merge — **never silently** (Step 7.5.3).
 

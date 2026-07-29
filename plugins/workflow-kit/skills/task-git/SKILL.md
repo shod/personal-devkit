@@ -4,13 +4,13 @@ description: >-
   Git workflow for tasks: branch creation, commit, merge into feature branch.
   Use /task-git T*** (e.g. T002, T013) — the skill automatically determines
   the current phase (create → commit → merge) based on git state.
-  Supports --scope=phase for branch-per-Phase orchestration (one phase/{N} branch,
-  one CHECKS run, one merge) driven by phase-runner.
-argument-hint: "<task-id|phase-number> [--scope=task|phase] [--phase=CREATE|COMMIT|MERGE] [--phase-action=CREATE|COMMIT|CHECKS|MERGE] [--auto]"
+  Supports --scope=phase for branch-per-Phase orchestration (one
+  phase/{N}-{feature-slug} branch, one CHECKS run, one merge) driven by phase-runner.
+argument-hint: "<task-id|phase-number> [--scope=task|phase] [--phase=CREATE|COMMIT|MERGE] [--phase-action=CREATE|COMMIT|CHECKS|MERGE] [--phase-branch=<name>] [--auto]"
 allowed-tools: Bash(git *) Read Grep Glob AskUserQuestion
 metadata:
   author: speckit
-  version: "1.1"
+  version: "1.2"
   category: git-workflow
 ---
 
@@ -26,7 +26,7 @@ The skill automatically determines the current phase based on git state and exec
 | Scope | Branch unit | Identifier | Lifecycle |
 |-------|-------------|------------|-----------|
 | `task` (default) | one branch per task `{task_branch_prefix}{TASK_ID}` | `T###` | CREATE → COMMIT → MERGE (into feature branch) |
-| `phase` | one branch per phase `{phase_branch_prefix}{N}` | phase number `N` | CREATE → COMMIT (per task) → CHECKS → MERGE (into feature branch) |
+| `phase` | one branch per phase `{phase_branch_prefix}{N}-{feature-slug}` | phase number `N` | CREATE → COMMIT (per task) → CHECKS → MERGE (into feature branch) |
 
 - **`--scope=task`** (or omitted) — the original per-task behavior, **unchanged**. Everything below the "Phase scope" section applies.
 - **`--scope=phase`** — branch-per-Phase mode, driven by `phase-runner`. See the dedicated **"Phase scope"** section near the end of this file. In this mode the git sub-step is selected via `--phase-action=CREATE|COMMIT|CHECKS|MERGE` (NOT `--phase=`, which collides with the phase number).
@@ -42,6 +42,10 @@ The skill automatically determines the current phase based on git state and exec
 **Optional**: `--phase=CREATE|COMMIT|MERGE` — force a specific phase in `task` scope (used when called from an agent/orchestrator).
 
 **Optional**: `--phase-action=CREATE|COMMIT|CHECKS|MERGE` — the git sub-step in `phase` scope (always passed by `phase-runner`).
+
+**Optional**: `--phase-branch=<name>` — the fully resolved phase-branch name (e.g.
+`phase/3-007-bookings-export-fields`). `phase-runner` resolves it once and passes it to every
+phase-scope call; use it **verbatim** when present instead of re-deriving the name.
 
 **Optional**: `--auto` — non-interactive mode (used during parallel execution from `task-runner-parallel`). In this mode, all user questions are replaced with default values.
 
@@ -276,13 +280,16 @@ action), then ONE `--no-ff` merge into the feature branch. Driven exclusively by
 
 ### Step P0: Validation (phase scope)
 
-1. Extract **PHASE_NUM** from `$ARGUMENTS` (first bare integer; e.g. `3`, `1`). If not found → **STOP**: "No phase number specified (e.g. /task-git 3 --scope=phase --phase-action=CREATE)".
+1. Extract **PHASE_NUM** from `$ARGUMENTS` (first bare integer; e.g. `3`, `1`). If not found, and `--phase-branch=` was passed, take the number from that name (the digits right after the prefix, `phase/3-007-…` → `3`). If still not found → **STOP**: "No phase number specified (e.g. /task-git 3 --scope=phase --phase-action=CREATE)".
 2. Extract **PHASE_ACTION** from `--phase-action=` (`CREATE|COMMIT|CHECKS|MERGE`). If missing → **STOP**.
 3. Extract `--auto` → **AUTO_MODE** (default `false`).
 4. For `COMMIT`: extract the **TASK_ID** (`T\d+`) being committed — `phase-runner`/`task-runner` pass it so the commit scope stays the task ID.
-5. Determine **FEATURE_BRANCH** = `git branch --show-current` (the source of truth — **do not** read `feature_branch` from `.claude-project.json`, it is frequently stale).
-6. Read `phase_branch_prefix` from `.claude-project.json` `paths` (e.g. `phase/`). Determine **PHASE_BRANCH** = `{phase_branch_prefix}{PHASE_NUM}` (e.g. `phase/3`).
-7. Find FEATURE_DIR (`specs/*` containing `tasks.md`) for command/spec resolution.
+5. Determine **FEATURE_BRANCH** = `git branch --show-current` (the source of truth — **do not** read `feature_branch` from `.claude-project.json`, it is frequently stale). If the current branch **is** `PHASE_BRANCH` (COMMIT/CHECKS/MERGE run on it), take instead the branch it was created from: `git reflog show {PHASE_BRANCH}` → the `branch: Created from <name>` entry, or `--feature-branch=` if `phase-runner` passed it. If neither resolves → **STOP** rather than guessing.
+6. Determine **PHASE_BRANCH**:
+   - If `--phase-branch=<name>` was passed → use it **verbatim**. This is the normal path: `phase-runner` resolved the name once (Step 5.5) and every phase-scope call carries it.
+   - Otherwise derive it: read `phase_branch_prefix` from `.claude-project.json` `paths` (e.g. `phase/`), take **FEATURE_SLUG** = basename of the spec directory holding `tasks.md` (`specs/007-bookings-export-fields` → `007-bookings-export-fields`; lowercase, every character outside `[a-z0-9._-]` → `-`, collapse repeats, trim `-`), and set **PHASE_BRANCH** = `{phase_branch_prefix}{PHASE_NUM}-{FEATURE_SLUG}` (e.g. `phase/3-007-bookings-export-fields`).
+   - The slug makes the name **unique per feature**, so a phase branch from another spec can never be picked up by mistake. Never fall back to the bare `{phase_branch_prefix}{PHASE_NUM}` form — that is the legacy naming and is not created or written to anymore.
+7. Find FEATURE_DIR (`specs/*` containing `tasks.md`) for command/spec resolution — and, when the slug has to be derived (6b), as its source.
 
 ### Phase action CREATE — create the phase branch (once)
 
@@ -290,11 +297,11 @@ action), then ONE `--no-ff` merge into the feature branch. Driven exclusively by
 
 1. Ensure the working tree is clean (`git status --porcelain` empty). If dirty — **STOP**.
 2. If `{PHASE_BRANCH}` **already exists**, `git checkout -b` will fail. Do **not** force it and
-   do **not** delete the branch: `{phase_branch_prefix}{N}` is a flat, reusable name, so a
-   leftover `phase/4` from an *earlier feature* is common and building on it would put this
-   phase's commits on an obsolete base. **STOP** and report the collision — `phase-runner`
-   resolves it before calling CREATE (Step 5.55: rename the foreign branch to `…-stale`, or
-   reuse it when it genuinely belongs to this feature).
+   do **not** delete the branch. Since the name carries the feature slug
+   (`{phase_branch_prefix}{N}-{feature-slug}`), an existing branch is **this feature's own
+   phase {N}** — an earlier, interrupted run — never a foreign feature's. **STOP** and report
+   it; `phase-runner` decides before calling CREATE (Step 5.55: reuse the branch and check it
+   out instead of creating it).
 3. `git checkout -b {PHASE_BRANCH}`
 4. Output:
 ```

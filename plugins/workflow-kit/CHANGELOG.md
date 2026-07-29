@@ -4,6 +4,32 @@ All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this plugin adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0]
+
+### Changed
+
+- **Phase branches are now named `{phase_branch_prefix}{N}-{feature-slug}`** (e.g.
+  `phase/3-007-bookings-export-fields`) instead of the flat `{phase_branch_prefix}{N}`
+  (`phase/3`). The slug is the basename of the spec directory holding the `tasks.md` being
+  run (`$TASKS_PATH`), normalized for a git ref. Because the name now carries the feature, a
+  phase branch from a *different* spec can no longer collide with the current run — which was
+  the whole reason the 0.3.0 stale-branch guard existed.
+  - `phase-runner` (1.2 → 1.3): Step 5.5 derives `FEATURE_SLUG` from `$TASKS_PATH` and builds
+    `PHASE_BRANCH`; Step 5.55 shrinks from "detect and rename a foreign `phase/N`" to
+    "an existing `PHASE_BRANCH` is *ours* — reuse it (merging the feature branch in if it is
+    behind)", plus a non-destructive note when a legacy flat `phase/N` still exists.
+  - `task-git` (1.1 → 1.2): new **`--phase-branch=<name>`** flag — `phase-runner` resolves the
+    name once and passes it to every phase-scope call (CREATE / COMMIT / CHECKS / MERGE), which
+    use it verbatim. Without the flag the skill derives the same `{N}-{slug}` name from the spec
+    dir; the bare legacy form is never produced. Phase-scope CREATE still STOPs on a
+    pre-existing branch, but now reports it as this feature's interrupted run.
+  - `task-runner` / `task-runner-parallel`: `PHASE_BRANCH` from the prompt context must be used
+    verbatim, never rebuilt from the phase number; the COMMIT call passes `--phase-branch=`.
+
+  **Migration:** branches created under the old scheme are left alone (never renamed, never
+  deleted). A phase interrupted mid-run under the old naming will not be picked up by the new
+  name — merge or finish it manually, or re-run the phase on the new branch.
+
 ## [0.3.0]
 
 ### Fixed
