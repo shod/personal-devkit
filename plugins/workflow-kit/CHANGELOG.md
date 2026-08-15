@@ -4,6 +4,32 @@ All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this plugin adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0]
+
+### Fixed
+
+- **Hardened `phase-runner` / `task-git` against false-positive test status from agent
+  prose.** Root-caused by a production incident: a `task-runner` agent whose task was "run
+  tests and verify no regressions" reported a task-notification summary of "completed
+  successfully" while its own result body embedded raw test output showing real failures
+  (`5 failed, 1206 passed`). The orchestrator initially trusted the prose and reported the
+  phase green; a real product bug (a service silently failing to persist a row) shipped
+  uncaught until an unrelated later re-read of the raw output caught the mismatch.
+  - `phase-runner` (1.3 → 1.4): new Rules subsection **"Never trust agent prose for
+    pass/fail"** — the pass/fail verdict for any test/lint/build/CHECKS step must come from
+    directly parsing raw command output, never from a subagent's prose ("passed",
+    "completed successfully", etc.), whether that prose is the task-notification
+    `<summary>` line or inside the result body. Added explicit "read the full result body,
+    not just the summary line" call-outs at Step 6 (parallel batch) and Step 7 (sequential
+    tasks). A mismatch between an agent's prose and its own embedded raw output is now
+    treated as a signal to re-verify neighboring tasks that agent touched, not just the one
+    contradiction.
+  - `task-git` (1.2 → 1.3): phase-scope **CHECKS** action now states explicitly that Pint /
+    PHPStan / Tests verdicts must be read from each command's raw captured stdout/stderr
+    (failure markers, "N failed" summary lines, non-zero exit codes) — not inferred from
+    "the command didn't crash" or paraphrased — since CHECKS is the one place in the chain
+    where the gate is authoritative.
+
 ## [0.4.0]
 
 ### Changed

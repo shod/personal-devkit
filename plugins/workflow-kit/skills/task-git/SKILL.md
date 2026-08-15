@@ -10,7 +10,7 @@ argument-hint: "<task-id|phase-number> [--scope=task|phase] [--phase=CREATE|COMM
 allowed-tools: Bash(git *) Read Grep Glob AskUserQuestion
 metadata:
   author: speckit
-  version: "1.2"
+  version: "1.3"
   category: git-workflow
 ---
 
@@ -330,6 +330,14 @@ label stays the TASK_ID** so per-task traceability survives on the phase branch.
 Run all three quality gates **once** for the whole phase, in order. Use the commands from
 `.claude-project.json` `commands.*` — **do not** hand-write `docker compose`.
 
+> **The pass/fail verdict for every gate below MUST be derived by directly parsing the raw
+> stdout/stderr of the command you just ran** — grep/match the tool's own failure markers
+> (`FAILED`, `✗`, non-zero exit code, PHPStan's error count, PHPUnit's "N failed" summary
+> line) in the actual captured output. Do not infer PASS from "the command didn't crash" or
+> from your own paraphrase of what it printed — read the numbers/markers in the output
+> itself. This is the one place in the whole skill chain where CHECKS is authoritative, so
+> it must not degrade into a summarized impression of the output.
+
 1. **Pint** — run `commands.pint`.
    - If it modified files: `git add -A` → `git commit -m "style(phase-{PHASE_NUM}): pint"`.
    - On **unfixable** violations (Pint reports errors it cannot auto-fix) → **STOP** and report; do not proceed to PHPStan/Tests/MERGE.
@@ -338,6 +346,9 @@ Run all three quality gates **once** for the whole phase, in order. Use the comm
    - On errors in changed files → **STOP** and report.
 3. **Tests** — run `commands.test`.
    - On any failing test → **STOP** and report. Do **not** proceed to MERGE.
+   - Read the test runner's own summary line (e.g. `Tests: N failed, M passed`) from the
+     captured output; a non-zero "failed" count is a failure regardless of exit code or any
+     surrounding narration.
 
 Output:
 ```
@@ -347,6 +358,14 @@ Output:
 
 > On any STOP here the phase branch is left **unmerged** for inspection. Never weaken an
 > assertion or skip a gate to force green.
+>
+> **Why this is spelled out explicitly:** a `task-runner` agent's *prose* summary of a test
+> run has been observed, in production, to claim "completed successfully" while its own
+> captured output showed real failures (`5 failed, 1206 passed`) — the failure shipped
+> uncaught until an unrelated later re-read of the raw output caught it. That failure mode
+> is why CHECKS never delegates the verdict to a subagent's phrasing, here or anywhere else
+> in this skill: only direct parsing of the raw output established the verdict then, and
+> only that should ever establish it. Do not relax this to "trust the summary" for speed.
 
 ### Phase action MERGE — merge the phase branch into the feature branch (once)
 

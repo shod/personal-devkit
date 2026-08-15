@@ -14,7 +14,7 @@ allowed-tools: Agent Read Grep Glob Skill AskUserQuestion Edit Bash PowerShell T
 model: sonnet
 metadata:
   author: speckit
-  version: "1.3"
+  version: "1.4"
   category: task-orchestration
 ---
 
@@ -325,6 +325,15 @@ Agent(
 
 Wait for the batch to complete.
 
+> ⚠️ **When the batch's task-notification arrives, its one-line `<summary>` is a UI label
+> only** — never read that line and stop there. Open the agent's **full result body**. If
+> the result body embeds raw command output (test runner output, PHPStan/Pint output,
+> etc.), that raw output — not the agent's own prose wrapped around it — is what matters.
+> A worker claiming "implemented and committed" is not evidence the commit is real or that
+> any check it happened to run actually passed; the mandatory verification below (script
+> exit code, and later the phase-level CHECKS raw output) is what decides, never the
+> agent's phrasing. See "Never trust agent prose for pass/fail" in Rules.
+
 **After the agent returns — mandatory verification and cleanup:**
 
 First, verify git is still healthy: `git config --list > /dev/null`. If this fails, **STOP** and report `.git/config` corruption to the user before doing anything else.
@@ -431,7 +440,12 @@ For each task in **tasks.md order**:
      """
    )
    ```
-3. Wait for completion
+3. Wait for completion.
+
+   > ⚠️ **The task-notification's one-line `<summary>` is a UI label only — never use it to
+   > decide pass/fail.** Always open and read the agent's full result body. If that body
+   > embeds raw command output, the raw output is the source of truth, not the agent's
+   > prose around it. See "Never trust agent prose for pass/fail" in Rules.
 4. **After the agent returns — mandatory verification (target = `PHASE_BRANCH`, NOT the feature branch):**
    a. First verify git health: `git config --list > /dev/null`. If this fails, **STOP** and report `.git/config` corruption.
    b. Ensure we are on the phase branch: `git checkout {PHASE_BRANCH}` (the sequential agent worked directly on it).
@@ -459,6 +473,14 @@ the merge exactly once.
    This runs `commands.pint` (auto-fix → commit `style(phase-{N}): pint` if it changed files), then `commands.phpstan` on changed files only, then `commands.test`.
    - On any failure (unfixable Pint violations, PHPStan errors in changed files, or failing tests) the skill **STOPs** and leaves `PHASE_BRANCH` **unmerged**. When this happens → **STOP**, surface the failure to the user, and do **not** merge or mark any task `[x]`.
    - **Baseline-red is not a regression** (see Rules): if a failing test was already red on `{current_branch}` before the phase, it is not this phase's regression — note it as pre-existing rather than blocking the merge or weakening the assertion.
+   - **The PASS/FAIL verdict for Pint/PHPStan/Tests MUST come from `task-git`'s own direct
+     parsing of each command's raw stdout/stderr — never from a subagent's prose summary.**
+     `task-git` runs `commands.pint`/`commands.phpstan`/`commands.test` itself (Bash/PowerShell,
+     not a delegated agent) and reads the raw output directly, so this step already satisfies
+     the rule by construction. If `task-git`'s report to phase-runner ever comes from an agent
+     hop instead (e.g. a future refactor delegates CHECKS to a subagent), phase-runner MUST NOT
+     accept that agent's "tests passed" / "completed successfully" claim as sufficient — see
+     "Never trust agent prose for pass/fail" in Rules.
 
 2. **MERGE** — merge the phase branch into the feature branch once:
    ```
@@ -568,6 +590,50 @@ Bash("curl -s -o /dev/null -d \"Phase {N} complete: {N_ok}/{N_total}\" https://n
 ---
 
 ## Rules (NON-NEGOTIABLE)
+
+### Never trust agent prose for pass/fail
+
+> **Why this rule exists.** In production use, a `task-runner` agent whose job was
+> literally "run tests and verify no regressions" reported a task-notification summary of
+> "completed successfully" while its own result body contained the raw test-runner output
+> showing `5 failed, 1206 passed`. phase-runner initially trusted the prose summary and
+> reported the phase green; the failure was only caught by a later, independent re-read of
+> the raw output — by which point a real product bug (a service silently failing to persist
+> a row) had shipped uncaught through an earlier phase. **Do not relax this rule "for
+> efficiency" or because an agent's summary looks confident** — a confident wrong summary is
+> exactly the failure mode this guards against, and an agent that can misreport once can
+> misreport again no matter how its prompt asks it to phrase things.
+
+Applies to **every** step in this skill that gates a merge, a `[x]` mark, or a "phase
+complete" report on a test/lint/build/verification outcome — Step 6 (parallel batch),
+Step 7 (sequential tasks), Step 7.5 (phase CHECKS), and the final report (Step 8). Concretely:
+
+1. **The pass/fail verdict for any test/lint/build/CHECKS step MUST be established by
+   directly parsing the raw stdout/stderr of the command** — grep/match the tool's own
+   failure markers (`FAILED`, `✗`, non-zero exit code, "N failed" summary lines, PHPStan
+   error counts, etc.) **in the actual captured output**. A subagent's prose claim of
+   "passed", "completed successfully", "all green", "no regressions", etc. is **never**
+   sufficient evidence on its own, whether it appears in a task-notification `<summary>`
+   line or inside the result body's prose. If phase-runner did not itself see and
+   pattern-match the raw output (or read a script's exit code — see "Verifying task
+   completion"), the gate is **not yet verified**.
+2. **The task-notification `<summary>` line is a UI label only.** Always open the full
+   result body of every subagent. If the body embeds raw command output, that raw output —
+   not the agent's prose wrapped around it — is the source of truth.
+3. **A mismatch between an agent's prose and the raw output it embeds is a serious finding
+   on its own**, not just a fixed-and-move-on incident: if a `task-runner`/`task-runner-parallel`
+   agent's self-reported status ever disagrees with the raw output in its own result, treat
+   that agent's self-reporting as unreliable for the rest of the run — re-verify neighboring
+   tasks it touched too (re-run "Verifying task completion" on them), don't just fix the one
+   contradiction and continue trusting the rest.
+4. **Independent re-verification is mandatory, not a nice-to-have.** The dedicated CHECKS
+   step (Step 7.5) already runs Pint/PHPStan/Tests directly via `task-git` (Bash/PowerShell,
+   not a delegated agent) and reads the raw output itself — this satisfies the rule by
+   construction and must stay that way. If a future task ever appears in tasks.md that is
+   itself titled "run tests"/"verify no regressions"/similar and gets delegated to
+   `task-runner`, treat that task's own self-report as **never sufficient**: the mandatory
+   Step 7.5 CHECKS gate (which phase-runner runs and parses independently) is what actually
+   decides pass/fail, and it must still run in full even if such a task claims success.
 
 ### Branch-per-Phase model (the core invariant)
 - **ONE `PHASE_BRANCH` (`{phase_branch_prefix}{N}-{FEATURE_SLUG}`, e.g. `phase/3-007-bookings-export-fields`) per phase**, created ONCE (Step 5.6) from the feature branch. The slug is the spec directory of `$TASKS_PATH` — resolved once at Step 5.5 and passed verbatim to every agent and `task-git` call (`--phase-branch=`); nothing downstream re-derives it.
