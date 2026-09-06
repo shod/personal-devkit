@@ -38,6 +38,37 @@ renders state and collects input.
   single source of truth per screen. (Pick one of Riverpod / Bloc for the repo and
   stay consistent — do not mix paradigms across features.)
 
+## Layout: survives long text and font scale
+- **Size from the text, not from a character count.** Never `width = digits * 22.0`
+  and never a magic constant sized on one device. Measure the real string
+  (`TextPainter`) or let the framework lay it out.
+- **Respect `MediaQuery.textScalerOf(context)`.** A box that fits at 1.0x breaks at
+  the 1.8x-2.0x scale users actually enable in system settings.
+- **Everything that can overflow either scrolls or truncates.** `maxLines` +
+  `TextOverflow.ellipsis` for text; a scroll view for any column that can exceed the
+  viewport - especially with the keyboard open. `RenderFlex overflow` in any state is
+  a defect, not cosmetics.
+- **Focus must not change geometry.** Signal focus with colour, not with border
+  thickness: growing a border 1px -> 2px steals inner width and re-wraps the label.
+- Fixed-width children inside a `Row` need `Flexible`/`Expanded`; bottom sheets wrap
+  their body in `Flexible(SingleChildScrollView(...))`, never a fixed height.
+- Prove it: pump the widget at `TextScaler.linear(1.0)`, `1.3` and `1.85`, assert
+  `tester.takeException()` is null and that geometry is stable across focus.
+
+## Screen states: loading, ready, empty, failed
+- **Every request reaches a terminal state.** A `catch` that returns without settling
+  leaves `loading` with no result forever - the classic infinite spinner. Settle in
+  `finally`, or set an explicit failure state.
+- **`empty` and `failed` are different states with different UI.** "Nothing yet" must
+  never render the same as "the request died".
+- **Failure with nothing to show:** message + retry action. **Failure with something
+  already rendered** (cache): keep the old result, show a non-blocking banner.
+- **Never show a third-party SDK's own error string to the user.** Map provider
+  errors (Firebase, billing, network) to localized keys; the raw text goes to the log
+  and crash reporter.
+- Polling and streaming screens need a terminal condition and a retry cap. "Keep
+  reconnecting" is not a state.
+
 ## Testing pyramid (per constitution V)
 - **unit** — provider/notifier logic, DTO parsing, failure mapping.
 - **widget** — key screens (chat, paywall) with fake repositories.
@@ -51,4 +82,8 @@ renders state and collects input.
 - [ ] No secret/API key in Dart or compiled artifact; only the Sanctum token, in secure storage
 - [ ] DTOs match the current contract; errors mapped in one place
 - [ ] AI responses stream token-by-token (no blocking spinner)
+- [ ] No size derived from a character count or magic constant; long text scrolls or ellipsises
+- [ ] Widget pumped at textScaler 1.0 / 1.3 / 1.85 - no overflow, geometry stable on focus
+- [ ] Loading always settles; empty is not the same state as failed; failure shows message + retry
+- [ ] No raw SDK/server error string shown to the user - localized key only
 - [ ] E2E written with Patrol; external services faked
