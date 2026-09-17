@@ -7,7 +7,7 @@ description: >-
   Supports --scope=phase for branch-per-Phase orchestration (one
   phase/{N}-{feature-slug} branch, one CHECKS run, one merge) driven by phase-runner.
 argument-hint: "<task-id|phase-number> [--scope=task|phase] [--phase=CREATE|COMMIT|MERGE] [--phase-action=CREATE|COMMIT|CHECKS|MERGE] [--phase-branch=<name>] [--auto]"
-allowed-tools: Bash(git *) Read Grep Glob AskUserQuestion
+allowed-tools: Bash PowerShell Read Grep Glob AskUserQuestion
 metadata:
   author: speckit
   version: "1.4"

@@ -32,6 +32,15 @@ this plugin adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Fixed
 
+- **`task-git` could not run its own quality gates under a strict permission mode.** Its
+  `allowed-tools` was `Bash(git *)`, but the phase-scope **CHECKS** action runs the
+  project-defined `commands.pint` / `commands.phpstan` / `commands.test` (e.g.
+  `docker compose ... exec ...`, `bash bin/phpstan-changed.sh`), which that pattern does not
+  cover. It only worked in auto mode. `allowed-tools` is now `Bash PowerShell Read Grep Glob
+  AskUserQuestion`: the commands come from each project's `.claude-project.json`, so no fixed
+  prefix list can cover them, and PowerShell is needed on Windows. The "No code modification"
+  rules of the skill are unchanged.
+
 - **Hardened `phase-runner` / `task-git` against false-positive test status from agent
   prose.** Root-caused by a production incident: a `task-runner` agent whose task was "run
   tests and verify no regressions" reported a task-notification summary of "completed
