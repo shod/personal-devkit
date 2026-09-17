@@ -14,7 +14,7 @@ allowed-tools: Agent Read Grep Glob Skill AskUserQuestion Edit Bash PowerShell T
 model: sonnet
 metadata:
   author: speckit
-  version: "1.5"
+  version: "1.6"
   category: task-orchestration
 ---
 
@@ -319,7 +319,7 @@ Delegate to a `task-runner-parallel` agent. The integration target is **`PHASE_B
 ```
 Agent(
   subagent_type: "task-runner-parallel",
-  prompt: "{TASK_ID1} {TASK_ID2} {TASK_ID3} --scope=phase --defer-checks\n\n{context block: cwd, current_branch, PHASE_BRANCH, task_branch_prefix, AUTO_MODE, MCP tools, per-task SCOPE files, and the shared-file reconciliation note if overlap detected. KEY RULES: each task's ephemeral worktree branch is {task_branch_prefix}{TASK_ID} off PHASE_BRANCH HEAD; workers commit feat({TASK_ID}): ... on their own worktree branch ONLY — workers must NOT merge into PHASE_BRANCH, the feature branch, or development; task-runner-parallel itself merges every worker's branch back into PHASE_BRANCH sequentially (--no-ff), one at a time, immediately after the batch returns; checks are deferred (--defer-checks) — do NOT run Pint/PHPStan/Tests.}"
+  prompt: "{TASK_ID1} {TASK_ID2} {TASK_ID3} --scope=phase --defer-checks\n\n{context block: cwd, current_branch, PHASE_BRANCH, task_branch_prefix, AUTO_MODE, MCP tools, per-task SCOPE files, and the shared-file reconciliation note if overlap detected. KEY RULES: each task's ephemeral worktree branch is {task_branch_prefix}{TASK_ID} off PHASE_BRANCH HEAD; workers commit feat({TASK_ID}): ... on their own worktree branch ONLY — workers must NOT merge into PHASE_BRANCH, the feature branch, or development; task-runner-parallel itself merges every worker's branch back into PHASE_BRANCH sequentially (--no-ff), one at a time, immediately after the batch returns; checks are deferred (--defer-checks) — do NOT run Pint/PHPStan/the test suite; but if commands.test:guard exists, each worker runs it before committing (red → fix in scope or do not commit) and pastes the raw guard `Tests:` line.}"
 )
 ```
 
@@ -388,9 +388,15 @@ For each task in the batch, in order:
 
 3. **Do NOT mark `[x]` yet.** Tasks are marked complete in tasks.md only after the phase CHECKS pass and the phase branch is merged (Step 7.5). This keeps a failed CHECKS from leaving tasks falsely marked done.
 
+**Guard after the batch (only if `commands.test:guard` is defined):** once every worker branch
+is merged back and verified, run `commands.test:guard` yourself **once** on `PHASE_BRANCH` and
+parse the raw output. Workers ran it in isolation, so a violation can still appear only after
+the merges combine their changes. Red, or no `Tests:` line → **STOP** with the failing test
+names; do not start the sequential tasks.
+
 Print the result:
 ```
-  ✓ Parallel batch complete: {N_ok}/{N_total} successful
+  ✓ Parallel batch complete: {N_ok}/{N_total} successful   Guard: {✓ raw Tests: line | N/A}
 ```
 
 If any tasks failed:
@@ -431,7 +437,8 @@ For each task in **tasks.md order**:
      - All project commands (Docker, tests, linting, artisan make:*) are defined in {cwd}/.claude-project.json under "commands.*". Read that file first — do NOT write docker compose commands by hand.
      - Workflow (PHASE MODE): do NOT create a branch. Assert you are on {PHASE_BRANCH} → implement → commit feat({TASK_ID}): ... ONTO {PHASE_BRANCH}. Do NOT merge into the feature branch (the phase branch is merged ONCE by phase-runner after all tasks). Do NOT mark [x] (phase-runner does that after the phase merge).
      - BRANCH (do not improvise): work directly on the already-checked-out {PHASE_BRANCH}. Do NOT create a per-task branch. Never merge into {current_branch} or development.
-     - CHECKS DEFERRED (--defer-checks): do NOT run Pint / PHPStan / Tests. They run once for the whole phase at the phase CHECKS step. Just implement + commit.
+     - CHECKS DEFERRED (--defer-checks): do NOT run Pint / PHPStan / the test suite. They run once for the whole phase at the phase CHECKS step.
+     - GUARD (not deferred): if commands.test:guard exists in .claude-project.json, run it after implementing and BEFORE committing. Red → fix inside SCOPE and re-run; never weaken or skip a guard test; still red → do not commit, STOP and report. Paste the raw guard `Tests:` summary line into your report.
      - Related files (SCOPE): {list of all backend/ and tests/ paths extracted from task text}. Touch ONLY these files. If something outside scope looks broken, note it and move on — do not fix it.
      - AUTO_MODE=true: do NOT ask for commit confirmation or review confirmation — proceed automatically.
      - MCP TOOLS: prefer Laravel Boost MCP tools over manual file reading — use mcp__laravel-boost__database-schema instead of reading migrations, mcp__laravel-boost__last-error + mcp__laravel-boost__read-log-entries before any code fix when tests fail, mcp__laravel-boost__application-info instead of reading config files
@@ -456,6 +463,7 @@ For each task in **tasks.md order**:
       {plugin_root}/scripts/verify-task.ps1 {current_branch} {PHASE_BRANCH} {TASK_ID} {SCOPE_GLOBS...}
       ```
       `{SCOPE_GLOBS...}` = the task's related-files list passed to the agent. **Exit 0 = verified; any non-zero exit = the task is INCOMPLETE.** (See "Verifying task completion" in Rules for the criterion and the manual fallback if the script cannot run.)
+   c2. **Guard (only if `commands.test:guard` is defined):** run `commands.test:guard` **yourself** on `PHASE_BRANCH` and parse its raw output — the agent's pasted guard line is not evidence (see "Never trust agent prose for pass/fail"). No failed tests in the `Tests:` line and exit 0 → continue. Red, or no `Tests:` line → mark the task `✗ INCOMPLETE (guard)`, print the failing test names and raw output, and **STOP** before running the next task. If the agent's pasted line said green but your run is red, treat that agent's self-reporting as unreliable (Rules, point 3). Baseline-red still applies: if the same guard test is already red on `{current_branch}`, report it as pre-existing instead of blaming this task.
    d. Run `git status --short` — check for stray changes. For any modified file NOT in the task's related-files list, restore it: `git checkout HEAD -- <file>` and log a warning — **except** `.claude/worktrees/`, `.claude/agent-memory/` and **`$TASKS_PATH` (`specs/*/tasks.md`)**, which are never restored. Restoring `tasks.md` destroys completion marks: if it has uncommitted changes, **flag it** to the user (an agent violated its scope, or a previous phase left its `[x]` marks uncommitted) and commit those marks instead of discarding them. If an in-scope change was left uncommitted, commit it onto `PHASE_BRANCH` as `feat({TASK_ID}): ...` and re-run step (c).
    e. **Do NOT merge into the feature branch and do NOT mark `[x]`** — both happen once at Step 7.5 after CHECKS pass.
    f. If step (c) exits non-zero → mark task as `✗ INCOMPLETE`, print the script's stderr verbatim, and **STOP**: report to the user and ask how to proceed. An empty commit, a commit that changes nothing, or a commit touching only files outside the task's SCOPE all land here — they are **not** success.

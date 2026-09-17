@@ -48,7 +48,13 @@ If `$ARGUMENTS` is empty — **STOP** and ask the user to specify the task ID:
 
 > **SCOPE OVERRIDE**: At the task execution step, implement **ONLY** task {TASK_ID}. All other tasks — **SKIP**. Do not proceed to the next task after completion.
 
-> **CHECKS OVERRIDE (when DEFER_CHECKS=true)**: At the quality-gate step of implement.md, **SKIP Pint, PHPStan, and Tests entirely**. They run once per phase at the phase-level CHECKS step — do not run them per task. Still implement the code and apply all traceability tags. (When DEFER_CHECKS=false — the default for direct `/task-work` use — run the gates as normal.)
+> **CHECKS OVERRIDE (when DEFER_CHECKS=true)**: At the quality-gate step of implement.md, **SKIP Pint, PHPStan, and the test suite**. They run once per phase at the phase-level CHECKS step — do not run them per task. Still implement the code and apply all traceability tags. (When DEFER_CHECKS=false — the default for direct `/task-work` use — run the gates as normal.)
+
+> **GUARD (always, even when DEFER_CHECKS=true)**: if `.claude-project.json` defines `commands.test:guard`, run it after implementing and **before** the task is committed. It is the project's short list of fast constitution/architecture tests (seconds, not minutes) — violations it catches (e.g. a direct DB write in an admin adapter, a UI string literal) are cheap to fix now and expensive to find at phase CHECKS.
+> - Read the verdict from the raw output: the `Tests:` summary line must show no failed tests and the command must exit 0. A missing `Tests:` line is a failure.
+> - Red → fix the violation **inside the task's scope** and run `commands.test:guard` again. Never weaken, skip or edit a guard test to make it pass.
+> - Still red after a fix attempt, or the violation is outside the task's scope → **STOP**, do not commit, and report the failing test names with the raw output.
+> - If `commands.test:guard` is not defined, skip this step.
 
 3. Before starting implementation — find task TASK_ID in tasks.md:
    - If task not found — **STOP**: "Task {TASK_ID} not found in tasks.md"
@@ -84,9 +90,10 @@ Show the user the result:
     - Pint: ✓ / ✗ / deferred (phase-level)
     - PHPStan: ✓ / ✗ / deferred (phase-level)
     - Tests: ✓ / ✗ / N/A / deferred (phase-level)
+    - Guard: ✓ {raw `Tests:` line} / ✗ / N/A (no commands.test:guard)
 ```
 
-> When **DEFER_CHECKS=true**, print `deferred (phase-level)` for all three gates instead of ✓/✗ — they will be run once at the phase CHECKS step.
+> When **DEFER_CHECKS=true**, print `deferred (phase-level)` for the three phase gates instead of ✓/✗ — they will be run once at the phase CHECKS step. The **Guard** line is always filled in, with the raw `Tests:` summary line copied verbatim.
 
 ## Rules
 

@@ -4,6 +4,35 @@ All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this plugin adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0]
+
+### Added
+
+- **Per-task guard: fast constitution/architecture tests run before every task commit, even
+  with `--defer-checks`.** Root cause: in a multi-phase `phase-runner` run a task added
+  `Request::create(...)` to an admin adapter; the project's fast scan test
+  (`FilamentWritesThroughDomainTest`) would have flagged it in seconds, but with checks
+  deferred it surfaced only in the full suite at phase CHECKS, costing an extra fix-and-rerun
+  of the whole suite.
+  - New optional project command **`commands.test:guard`** in `.claude-project.json`: the
+    project's own short list of fast tests (seconds). The plugin never names test classes —
+    each project decides what belongs in its guard. Not defined → nothing changes.
+  - `task-work`: under `DEFER_CHECKS=true` Pint / PHPStan / the suite are still skipped, but
+    `commands.test:guard` runs after implementing and before the commit. Red → fix inside the
+    task scope and re-run; never weaken a guard test; still red → STOP without committing.
+    The summary gets a **Guard** line with the raw `Tests:` summary.
+  - `task-runner` agent: must not commit while the guard is red; pastes the raw guard line.
+  - `phase-runner` (1.5 → 1.6): the task prompt includes the GUARD rule; after each sequential
+    task the orchestrator re-runs `commands.test:guard` itself (step 7.4.c2) and STOPs on red —
+    the agent's pasted line is not evidence. With `--parallel`, the guard runs once more on
+    `PHASE_BRANCH` after the batch's merge-back, because merged changes can combine into a
+    violation no single worker saw.
+  - Example (Laravel Sail) — keep only fast scan tests; slow `arch()` dependency checks stay in
+    the full suite:
+    ```json
+    "test:guard": "docker compose -f \"./docker-compose.yml\" exec -u sail laravel.test php artisan test --compact --colors=never tests/Arch/FilamentWritesThroughDomainTest.php tests/Arch/NoDirectStatusWritesTest.php tests/Arch/NoCyrillicLiteralsTest.php 2>&1"
+    ```
+
 ## [0.5.0]
 
 ### Changed

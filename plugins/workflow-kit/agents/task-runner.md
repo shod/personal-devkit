@@ -174,7 +174,7 @@ The per-task lifecycle collapses to:
 ├─────────────────────────────────────────────────────────┤
 │  1. (no CREATE) assert current branch == PHASE_BRANCH    │
 ├─────────────────────────────────────────────────────────┤
-│  2. task-work {TASK_ID} --defer-checks                   │  → implement, NO Pint/PHPStan/Tests
+│  2. task-work {TASK_ID} --defer-checks                   │  → implement + test:guard, NO Pint/PHPStan/suite
 ├─────────────────────────────────────────────────────────┤
 │  3. task-git {TASK_ID} --scope=phase                  │  → commit feat({TASK_ID}): ... onto PHASE_BRANCH
 │       --phase-action=COMMIT --auto                       │
@@ -208,7 +208,13 @@ phase branch first."
 
 Call **Skill tool**: `task-work` with `{TASK_ID} --defer-checks`. The skill implements the
 task and applies all `@created-by {TASK_ID}` traceability tags but **skips** Pint, PHPStan
-and Tests (they run once at the phase CHECKS step).
+and the test suite (they run once at the phase CHECKS step).
+
+**Guard before commit:** `task-work` still runs `commands.test:guard` (fast constitution /
+architecture tests) when the project defines it. Do **not** go on to Phase 3 (commit) while
+the guard is red — fix the violation inside scope or STOP and report. Copy the raw guard
+`Tests:` summary line into your final report; the orchestrator re-runs the guard itself and
+compares.
 
 ### Phase-mode Phase 3 — commit onto the phase branch
 
