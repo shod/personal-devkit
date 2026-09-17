@@ -6,6 +6,30 @@ this plugin adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [0.5.0]
 
+### Changed
+
+- **Full test suite runs detached inside the container when the project supports it.**
+  Root cause: during a multi-phase `phase-runner` run the full suite was started as a
+  host-side `docker compose exec ... php artisan test` and the host client was killed
+  "because the system is running low on memory" — the output was lost and the PHP process
+  kept running orphaned in the container. A detached run writing a plain-text log finished
+  reliably on every following phase.
+  - `task-git` (1.3 → 1.4): phase-scope **CHECKS** now uses `commands.test:bg` (start the
+    suite with `exec -d`, log ends with `EXIT=<code>`) + `commands.test:bg:wait`
+    (`run_in_background: true`) when both are defined, and falls back to `commands.test`
+    otherwise — existing `.claude-project.json` files keep working. A missing `Tests:` line
+    counts as a failure. Documents how to stop an orphaned run: `ps` + `kill <PID>`, never
+    `pkill -f` with a pattern that also matches its own `sh -c` command line.
+  - `phase-runner` (1.4 → 1.5): Step 7.5 describes the new test command selection and forbids
+    re-running the full suite in the foreground from the host when `commands.test:bg` exists.
+  - `task-runner` agent: tests run through `commands.test:filter` / `commands.test:bg` instead
+    of a hard-coded `php artisan test --compact`.
+  - Example `.claude-project.json` commands (Laravel Sail):
+    ```json
+    "test:bg":      "docker compose -f \"./docker-compose.yml\" exec -d -u sail laravel.test sh -c 'rm -f storage/logs/test-run.log; php artisan test --compact --colors=never > storage/logs/test-run.log 2>&1; echo EXIT=$? >> storage/logs/test-run.log'",
+    "test:bg:wait": "until grep -q '^EXIT=' storage/logs/test-run.log 2>/dev/null; do sleep 15; done; grep -E 'Tests:|Duration|FAILED|EXIT=' storage/logs/test-run.log"
+    ```
+
 ### Fixed
 
 - **Hardened `phase-runner` / `task-git` against false-positive test status from agent

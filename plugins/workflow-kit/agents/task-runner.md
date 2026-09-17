@@ -282,7 +282,7 @@ Record lookup results in `@spec` tags of the class PHPDoc block. If nothing foun
 - **PROHIBITED** to run PHPUnit with `--coverage` in any form
 - **PROHIBITED** to modify/create files in the `coverage/` folder
 - Coverage is run **ONLY** manually by the user via `/coverage`
-- Run tests via: `php artisan test --compact`
+- Run tests via the project's `.claude-project.json` commands: narrow runs with `commands.test:filter`; a full suite (only when not `--defer-checks`) with `commands.test:bg` + `commands.test:bg:wait` (`run_in_background: true`) if both are defined, otherwise `commands.test`
 
 ### Git operations (delegated to task-git)
 - **PROHIBITED** force push, reset --hard, rebase and other destructive operations

@@ -14,7 +14,7 @@ allowed-tools: Agent Read Grep Glob Skill AskUserQuestion Edit Bash PowerShell T
 model: sonnet
 metadata:
   author: speckit
-  version: "1.4"
+  version: "1.5"
   category: task-orchestration
 ---
 
@@ -470,7 +470,8 @@ the merge exactly once.
    ```
    Skill: task-git "{N} --scope=phase --phase-action=CHECKS --phase-branch={PHASE_BRANCH} --auto"
    ```
-   This runs `commands.pint` (auto-fix → commit `style(phase-{N}): pint` if it changed files), then `commands.phpstan` on changed files only, then `commands.test`.
+   This runs `commands.pint` (auto-fix → commit `style(phase-{N}): pint` if it changed files), then `commands.phpstan` on changed files only, then the full test suite: via `commands.test:bg` + `commands.test:bg:wait` (detached inside the container, waited for with `run_in_background`) when the project defines both, otherwise via `commands.test`. See `task-git` → "Phase action CHECKS" for the exact procedure.
+   - **Never run the full suite yourself in the foreground from the host** when `commands.test:bg` exists — not even to "double-check" CHECKS. The host-side exec client can be killed for low memory, losing the output and leaving an orphaned run in the container.
    - On any failure (unfixable Pint violations, PHPStan errors in changed files, or failing tests) the skill **STOPs** and leaves `PHASE_BRANCH` **unmerged**. When this happens → **STOP**, surface the failure to the user, and do **not** merge or mark any task `[x]`.
    - **Baseline-red is not a regression** (see Rules): if a failing test was already red on `{current_branch}` before the phase, it is not this phase's regression — note it as pre-existing rather than blocking the merge or weakening the assertion.
    - **The PASS/FAIL verdict for Pint/PHPStan/Tests MUST come from `task-git`'s own direct

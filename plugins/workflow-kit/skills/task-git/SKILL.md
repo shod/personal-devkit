@@ -10,7 +10,7 @@ argument-hint: "<task-id|phase-number> [--scope=task|phase] [--phase=CREATE|COMM
 allowed-tools: Bash(git *) Read Grep Glob AskUserQuestion
 metadata:
   author: speckit
-  version: "1.3"
+  version: "1.4"
   category: git-workflow
 ---
 
@@ -344,7 +344,29 @@ Run all three quality gates **once** for the whole phase, in order. Use the comm
 2. **PHPStan (changed files only)** — get the changed PHP files:
    `git diff {FEATURE_BRANCH}...HEAD --name-only -- "*.php"`, pass them to `commands.phpstan` (as positional paths or `--paths=`). This honors the repo's 500+ legacy-error rule (only new/changed files are analysed; never touch legacy errors).
    - On errors in changed files → **STOP** and report.
-3. **Tests** — run `commands.test`.
+3. **Tests (full suite)** — pick the command by what the project defines:
+   - **If `commands.test:bg` AND `commands.test:bg:wait` exist — use them (preferred):**
+     1. Make sure no earlier suite run is still alive in the container (an orphan would
+        overwrite the same log mid-run): list processes with `ps -eo pid,etime,args` via the
+        project's exec command. If one is left, stop it with `kill <PID>`. **Never**
+        `pkill -f "<pattern>"` inside `sh -c '...'` when the pattern also appears in that
+        command line — it matches and kills its own shell (exit 143) and leaves the real
+        process running.
+     2. Run `commands.test:bg`. It returns immediately: the suite runs **detached inside the
+        container** and writes a plain-text log ending with an `EXIT=<code>` line.
+     3. Run `commands.test:bg:wait` with `run_in_background: true` and wait for its
+        completion notification (do not poll, do not sleep in the foreground). Its output is
+        the raw summary (`Tests:` / `FAILED` / `EXIT=` lines) read from the log.
+     4. Verdict comes from that raw output: `EXIT=` must be `0` **and** the `Tests:` line must
+        have no failed count. A missing `Tests:` line (crash, OOM, killed run) is a **failure**,
+        not a pass. If `FAILED` lines are listed, read the failure details from the log file
+        before reporting.
+   - **Otherwise** run `commands.test` (legacy, foreground).
+   - **Why detached:** a full suite run in the foreground (or as a host-side background
+     command) streams all output through the host `docker compose exec` client. On a long
+     suite that client has been killed "because the system is running low on memory": the
+     output was lost and the PHP process kept running orphaned in the container. The
+     detached run + log file finished reliably on every phase.
    - On any failing test → **STOP** and report. Do **not** proceed to MERGE.
    - Read the test runner's own summary line (e.g. `Tests: N failed, M passed`) from the
      captured output; a non-zero "failed" count is a failure regardless of exit code or any
