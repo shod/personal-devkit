@@ -125,7 +125,7 @@ Never make real HTTP requests in tests. Use `Http::fake()` and `preventStrayRequ
 Incorrect:
 ```php
 it('syncs user from API', function () {
-    $service = new UserSyncService;
+    $service = new UserSyncService();
     $service->sync(1); // Hits the real API
 });
 ```
@@ -142,7 +142,7 @@ it('syncs user from API', function () {
         ]),
     ]);
 
-    $service = new UserSyncService;
+    $service = new UserSyncService();
     $service->sync(1);
 
     Http::assertSent(function (Request $request) {
