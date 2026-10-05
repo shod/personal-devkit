@@ -1,7 +1,7 @@
 # Plugins cheat-sheet
 
 Working reference for `shod/personal-devkit` (GitHub, **public**, default branch `master`).
-Marketplace hosts 3 plugins: `workflow-kit`, `laravel-kit`, `flutter-kit`.
+Marketplace hosts 4 plugins: `workflow-kit`, `laravel-kit`, `flutter-kit`, `python-kit`.
 
 ---
 

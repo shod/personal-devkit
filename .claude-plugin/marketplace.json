@@ -23,6 +23,11 @@
       "name": "flutter-kit",
       "source": "./plugins/flutter-kit",
       "description": "Flutter expertise: best-practices, Patrol E2E, flutter-expert agent. For Flutter frontends."
+    },
+    {
+      "name": "python-kit",
+      "source": "./plugins/python-kit",
+      "description": "Python expertise: best-practices (style, typing, errors, async, testing, tooling, security). Reusable across Python projects."
     }
   ]
 }

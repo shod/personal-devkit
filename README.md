@@ -9,6 +9,7 @@ Single source of truth. Consumed by any project; improvements sync via `/plugin 
 | `workflow-kit` | framework-agnostic (graphify, task/phase runners, spec-kit overlay, time-log, squash) | every project |
 | `laravel-kit`  | Laravel (best-practices, Horizon, Pint, larastan) | Laravel backends |
 | `flutter-kit`  | Flutter (best-practices, Patrol E2E, flutter-expert) | Flutter frontends |
+| `python-kit`   | Python (best-practices: typing, errors, async, testing, tooling, security) | Python projects |
 
 ## Hosting
 Personal **GitHub** (this toolkit is personal; the actual projects live on GitLab).

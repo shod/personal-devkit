@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin.json",
+  "name": "python-kit",
+  "version": "0.1.0",
+  "description": "Python best-practices: style, typing, error handling, data modeling, async, testing, packaging, security.",
+  "author": { "name": "Oleg Shmyk", "email": "aleh.shmyk@gmail.com" },
+  "keywords": ["python", "typing", "pytest", "ruff", "asyncio"]
+}
