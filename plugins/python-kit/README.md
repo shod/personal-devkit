@@ -10,6 +10,8 @@ Python expertise, reusable across Python projects (scripts, services, libraries)
 
 Target stack: Python 3.12, FastAPI, Uvicorn, SQLAlchemy 2 (sync), Alembic, psycopg 3, PydanticAI.
 
+Changes: see [CHANGELOG.md](CHANGELOG.md).
+
 ## To grow
 - ruff / mypy gate skill (like `pint` / `larastan` in laravel-kit)
 - pytest-patterns skill (fixtures, parametrize, mocking)
