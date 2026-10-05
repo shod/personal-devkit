@@ -13,6 +13,7 @@ Framework-agnostic dev workflow skills + workflow agents.
 - **time-log** — record task execution time
 - **todo-plans** — todo-plan management
 - **squash-commits** — squash a branch into one commit vs a base
+- **hand-off** — save a session snapshot into `specs/<feature>/handoffs/` (active feature or by name)
 - spec-kit OVERLAY (yours, not upstream): **graphify-spec-context**,
   **sh-speckit-archive**, **sdd-archive**
 

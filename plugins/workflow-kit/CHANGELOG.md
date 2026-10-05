@@ -4,6 +4,19 @@ All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this plugin adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`hand-off` skill: save a session snapshot into the feature folder.** Writes a
+  self-contained Markdown file to `specs/<feature>/handoffs/YYYY-MM-DD-HHMM-<slug>.md`
+  (goal, state, decisions with reasons, problems, open questions, next steps, git state,
+  tasks.md progress), so the work can continue in a new chat.
+  - Feature: argument (`/hand-off 007` — exact name or prefix) → `.specify/feature.json`
+    → current git branch → ask. Never creates a new feature folder.
+  - A new file every time; spec.md / plan.md / tasks.md are never touched.
+  - No secrets in the snapshot. No commit unless `--commit` (never on the base branch, never pushes).
+
 ## [0.6.0]
 
 ### Added

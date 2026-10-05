@@ -9,7 +9,7 @@ speckit-analyze/checklist/clarify/constitution/converge/implement/plan/specify/t
 
 ## workflow-kit (this repo)
 graphify, skill-generator, review, analytic-bft, task-work, task-runner,
-task-runner-parallel, phase-runner, time-log, todo-plans, squash-commits,
+task-runner-parallel, phase-runner, time-log, todo-plans, squash-commits, hand-off,
 + spec-kit overlay: graphify-spec-context, sh-speckit-archive, sdd-archive
 
 ## laravel-kit (this repo)
