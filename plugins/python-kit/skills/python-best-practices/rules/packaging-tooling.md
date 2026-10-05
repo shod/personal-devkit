@@ -8,7 +8,7 @@ No `setup.py`, `setup.cfg`, or hand-maintained `requirements.txt`.
 [project]
 name = "myapp"
 version = "0.1.0"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = ["httpx>=0.27", "pydantic>=2"]
 
 [dependency-groups]

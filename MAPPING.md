@@ -20,8 +20,8 @@ flutter-best-practices (starter ✅), flutter-expert agent (starter ✅),
 later: flutter-patrol-e2e, state-mgmt conventions, dart lint gate
 
 ## python-kit (this repo)
-python-best-practices (starter ✅),
-later: ruff/mypy gate, pytest-patterns, framework skills (FastAPI/Django)
+python-best-practices (starter ✅), fastapi-best-practices (starter ✅),
+later: ruff/mypy gate, pytest-patterns, Django
 
 ## Stays project-local (NOT here)
 - Company (project 1): backend/frontend-admin/frontend-airport experts,

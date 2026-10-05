@@ -8,7 +8,7 @@ metadata:
 
 # Python Best Practices
 
-Best practices for modern Python (3.11+), grouped by topic. Each rule says what to do and why.
+Best practices for modern Python (3.12+), grouped by topic. Each rule says what to do and why.
 For exact API details, check the official docs for the Python version the project uses.
 
 ## Consistency First

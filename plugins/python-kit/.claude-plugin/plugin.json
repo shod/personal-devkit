@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin.json",
   "name": "python-kit",
-  "version": "0.1.0",
-  "description": "Python best-practices: style, typing, error handling, data modeling, async, testing, packaging, security.",
+  "version": "0.2.0",
+  "description": "Python and FastAPI best-practices: style, typing, errors, async, testing, tooling, security, API design.",
   "author": { "name": "Oleg Shmyk", "email": "aleh.shmyk@gmail.com" },
-  "keywords": ["python", "typing", "pytest", "ruff", "asyncio"]
+  "keywords": ["python", "fastapi", "pydantic", "pydantic-ai", "sqlalchemy", "alembic", "pytest", "ruff"]
 }

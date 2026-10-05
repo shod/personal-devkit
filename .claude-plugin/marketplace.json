@@ -27,7 +27,7 @@
     {
       "name": "python-kit",
       "source": "./plugins/python-kit",
-      "description": "Python expertise: best-practices (style, typing, errors, async, testing, tooling, security). Reusable across Python projects."
+      "description": "Python expertise: python-best-practices and fastapi-best-practices. Reusable across Python projects."
     }
   ]
 }

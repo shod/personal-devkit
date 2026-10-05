@@ -72,12 +72,12 @@ def first[T](items: Sequence[T]) -> T | None:
     return items[0] if items else None
 ```
 
-On 3.11, use `TypeVar("T")` instead.
+Do not write new `TypeVar("T")` code on 3.12+. Type aliases: `type UserId = int`.
 
 ## Other useful tools
 
 - `Literal["a", "b"]` for a small fixed set of values
-- `Final` for constants, `@override` for overridden methods (3.12)
+- `Final` for constants, `@override` (from `typing`) for overridden methods
 - `Self` for methods that return the same class
 - `# type: ignore[code]` only with a specific code and a reason
 
