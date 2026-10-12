@@ -28,6 +28,11 @@
       "name": "python-kit",
       "source": "./plugins/python-kit",
       "description": "Python expertise: python-best-practices and fastapi-best-practices. Reusable across Python projects."
+    },
+    {
+      "name": "shod-speckit",
+      "source": "./plugins/shod-speckit",
+      "description": "Spec Kit process extensions: intent step before the PRD, intent/PRD traceability in every spec (Spec Kit preset that survives specify upgrades)."
     }
   ]
 }
