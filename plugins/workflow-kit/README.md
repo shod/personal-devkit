@@ -12,7 +12,8 @@ Framework-agnostic dev workflow skills + workflow agents.
 - **phase-runner** — orchestrate a whole phase (parallel + sequential) ⚠ see prereq
 - **time-log** — record task execution time
 - **todo-plans** — todo-plan management
-- **squash-commits** — squash a branch into one commit vs a base
+- **squash-commits** — squash a branch into one commit vs a base; `--scope=phase` makes one commit per phase (used by phase-runner)
+- **git-cleanup** — remove merged `task/*`, `phase/*`, `worktree-*` branches and worktrees (plan first, never force)
 - **hand-off** — save a session snapshot into `specs/<feature>/handoffs/` (active feature or by name)
 - spec-kit OVERLAY (yours, not upstream): **graphify-spec-context**,
   **sh-speckit-archive**, **sdd-archive**

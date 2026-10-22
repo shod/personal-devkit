@@ -1,0 +1,33 @@
+schema_version: "1.0"
+
+preset:
+  id: "shod-speckit"
+  name: "shod-speckit: intent traceability"
+  version: "0.1.0"
+  description: "Adds an intent/PRD Traceability section to every spec and a traceability pass to /speckit.analyze."
+  author: "Oleg Shmyk"
+  repository: "https://github.com/shod/personal-devkit"
+  license: "MIT"
+
+requires:
+  # Composition strategies (append/prepend/wrap) landed in Spec Kit 0.8.0.
+  speckit_version: ">=0.8.0"
+
+provides:
+  templates:
+    - type: "template"
+      name: "spec-template"
+      file: "templates/spec-traceability.md"
+      description: "Append a Traceability section (intent goals, PRD items, deferrals) to the core spec template"
+      strategy: "append"
+
+    - type: "command"
+      name: "speckit.analyze"
+      file: "commands/speckit.analyze-traceability.md"
+      description: "Append a traceability detection pass to the core analyze command"
+      strategy: "append"
+
+tags:
+  - "traceability"
+  - "intent"
+  - "prd"

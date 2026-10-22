@@ -5,11 +5,11 @@ description: >-
   base branch (default: development). Use when the user wants to combine/flatten
   many commits into one before merge or review. Creates a safety backup branch,
   soft-resets to the merge-base, and makes one commit. Does NOT push by default.
-argument-hint: "[--base=<branch>] [--message=<text>] [--no-backup] [--push]"
+argument-hint: "[--scope=branch|phase] [--base=<branch>] [--message=<text>] [--no-backup] [--push]"
 allowed-tools: Bash(git *) AskUserQuestion
 metadata:
   author: speckit
-  version: "1.0"
+  version: "1.1"
   category: git-workflow
 ---
 
@@ -24,6 +24,8 @@ This skill never modifies project files (only git history) and **does not push b
 ## Arguments
 
 Parse `$ARGUMENTS`:
+- `--scope=branch|phase` — default **`branch`** (the interactive flow below).
+  `phase` is the non-interactive mode for `phase-runner`. See **"Phase scope"** below.
 - `--base=<branch>` — base branch to squash against. Default: **`development`**.
 - `--message=<text>` — commit message for the squashed commit. If omitted, the
   message of the current `HEAD` commit is offered as the default.
@@ -119,6 +121,47 @@ git push --force-with-lease
   Push later:  git push --force-with-lease
 ```
 
+## Phase scope (`--scope=phase`)
+
+`phase-runner` uses this mode to make **one commit per phase**. It squashes all task commits
+on the phase branch into one commit, before the fast-forward merge into the feature branch.
+The result: the feature branch gets one commit for each phase.
+
+Differences from the default flow:
+- `--base=<feature branch>` is **required**. There is no default. If it is missing → **STOP**.
+- `--message=<text>` is **required**. If it is missing → **STOP**.
+- The skill does **not** ask questions (no AskUserQuestion).
+- The skill does **not** make a backup branch. `phase-runner` squashes only after CHECKS
+  pass, and the commits are still in the reflog.
+- The skill **never** pushes. `--push` is not permitted in this scope.
+
+Steps:
+
+1. Do Step 0 (Validation) with `BASE = {--base}`. In addition, **STOP** if
+   `CURRENT_BRANCH == BASE`.
+2. Record **PRE_SQUASH = `git rev-parse HEAD`**.
+3. Count commits: `git rev-list --count {MERGE_BASE}..HEAD` → **N**.
+   - If **N == 1** → do not squash. Use `git commit --amend -m "{MESSAGE}"` so that the
+     commit has the phase message. Then go to item 5.
+4. Squash:
+   ```
+   git reset --soft {MERGE_BASE}
+   git commit -m "{MESSAGE}"
+   ```
+5. Verify:
+   - `git rev-list --count {MERGE_BASE}..HEAD` **MUST** be `1`.
+   - `git diff {PRE_SQUASH} --stat` **MUST** be empty. If not → **STOP** and report.
+     Tell the user to restore with `git reset --hard {PRE_SQUASH}`.
+6. Output:
+   ```
+   ✓ Squashed {N} commits into one on {CURRENT_BRANCH} (base: {BASE})
+     New commit: {short SHA} — {MESSAGE}
+     Pre-squash HEAD: {short PRE_SQUASH}
+   ```
+
+`MERGE_BASE` is the feature branch HEAD, because the phase branch starts from it. Merge
+commits in the range (from the parallel merge-back) disappear in the squash. This is correct.
+
 ## Edge cases
 
 - **Detached HEAD**: `git rev-parse --abbrev-ref HEAD` returns `HEAD` — **STOP**:
@@ -133,6 +176,7 @@ git push --force-with-lease
 - Squash **ONLY** via soft reset to the merge-base. No interactive rebase
   (`rebase -i` is not supported in this environment).
 - **ALWAYS** create the backup branch unless `--no-backup` is explicitly passed.
+  Exception: `--scope=phase` makes no backup branch (it records `PRE_SQUASH` instead).
 - **NEVER** push unless `--push` is passed or the user explicitly chooses force-push.
 - Push **ONLY** with `--force-with-lease` — never bare `--force`.
 - On any unexpected git error — **STOP**, show the error, do not retry destructively.

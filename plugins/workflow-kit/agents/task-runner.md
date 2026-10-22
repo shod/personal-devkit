@@ -8,7 +8,7 @@ skills:
   - task-work
   - task-git
   - time-log
-model: inherit
+model: sonnet
 memory: project
 ---
 
@@ -229,8 +229,8 @@ not re-derive the name. The commit scope label stays `{TASK_ID}` (`feat({TASK_ID
 commits directly onto `{PHASE_BRANCH}` (there is no separate worktree branch to merge). For
 parallel `[P]` tasks, this agent never touches `{PHASE_BRANCH}` — see the note in Phase 1
 above; `task-runner-parallel` merges each worker's branch back **sequentially** after the
-whole batch finishes. The single `--no-ff` merge of `{PHASE_BRANCH}` into the feature branch
-is done once by `phase-runner` after CHECKS pass.
+whole batch finishes. After CHECKS pass, `phase-runner` squashes `{PHASE_BRANCH}` into one
+commit and merges it once into the feature branch with `--ff-only`.
 
 ### Phase-mode Phase 5 — record time
 

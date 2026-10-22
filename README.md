@@ -10,6 +10,7 @@ Single source of truth. Consumed by any project; improvements sync via `/plugin 
 | `laravel-kit`  | Laravel (best-practices, Horizon, Pint, larastan) | Laravel backends |
 | `flutter-kit`  | Flutter (best-practices, Patrol E2E, flutter-expert) | Flutter frontends |
 | `python-kit`   | Python (python-best-practices, fastapi-best-practices) | Python projects |
+| `shod-speckit` | Spec Kit process extensions (intent step, intent/PRD traceability preset) | Spec Kit projects |
 
 ## Hosting
 Personal **GitHub** (this toolkit is personal; the actual projects live on GitLab).
@@ -32,7 +33,8 @@ In `<project>/.claude/settings.json` (committed) or `~/.claude/settings.json` (p
   "enabledPlugins": {
     "workflow-kit@personal-devkit": true,
     "laravel-kit@personal-devkit": true,
-    "flutter-kit@personal-devkit": true
+    "flutter-kit@personal-devkit": true,
+    "shod-speckit@personal-devkit": true
   }
 }
 ```

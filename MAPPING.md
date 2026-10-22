@@ -12,6 +12,12 @@ graphify, skill-generator, review, analytic-bft, task-work, task-runner,
 task-runner-parallel, phase-runner, time-log, todo-plans, squash-commits, hand-off,
 + spec-kit overlay: graphify-spec-context, sh-speckit-archive, sdd-archive
 
+## shod-speckit (this repo)
+intent, speckit-preset (+ Spec Kit preset `shod-speckit`: spec-template append,
+speckit.analyze append). New Spec Kit process extensions go here; installed into a
+project via `specify preset add --dev` (copied into .specify/presets/), never by
+editing upstream files.
+
 ## laravel-kit (this repo)
 laravel-best-practices, configuring-horizon, larastan, pint
 

@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin.json",
+  "name": "shod-speckit",
+  "version": "0.1.0",
+  "description": "Oleg's Spec Kit extensions: intent step before the PRD, intent/PRD traceability in every spec, and a Spec Kit preset that survives `specify` upgrades.",
+  "author": { "name": "Oleg Shmyk", "email": "aleh.shmyk@gmail.com" },
+  "keywords": ["speckit", "sdd", "intent", "traceability", "preset"]
+}
