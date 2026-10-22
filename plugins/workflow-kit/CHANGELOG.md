@@ -4,6 +4,29 @@ All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this plugin adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`git-cleanup` skill** (moved from user-level skills into the plugin). Removes merged
+  `task/*`, `phase/*`, `worktree-*` branches and `.claude/worktrees/` directories. Shows a
+  plan first, deletes only branches already merged into the feature branch, never uses `-D`
+  without a separate explicit yes.
+- **`squash-commits --scope=phase`**: non-interactive mode for `phase-runner`. Squashes all
+  commits of the phase branch into one commit against the feature branch. `--base` and
+  `--message` are required; no questions, no backup branch, never pushes.
+
+### Changed
+
+- **`phase-runner`: one commit per phase on the feature branch.** Step 7.5 now runs:
+  CHECKS → mark tasks `[x]` and commit on the phase branch → (`--parallel` only) remove the
+  phase's task branches and worktrees → `squash-commits --scope=phase` with the message
+  `feat(phase-{N}): {phase title}` (subject only, no task list) → `task-git` MERGE.
+- **`task-git` phase-scope MERGE uses `git merge --ff-only`** instead of `--no-ff`. It stops
+  if the phase branch is not squashed to one commit or a fast-forward is not possible.
+  Task-scope merges still use `--no-ff`.
+- **`task-runner` agent runs on `model: sonnet`** instead of `inherit`.
+
 ## [0.7.0]
 
 ### Added

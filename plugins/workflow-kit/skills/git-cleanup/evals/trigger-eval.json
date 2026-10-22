@@ -1,0 +1,23 @@
+[
+  {"query": "ну всё, фича 002-onboarding-chat доделана и смержена. почисти за собой все эти task/ и phase/ ветки и worktree которые поразводил phase-runner", "should_trigger": true},
+  {"query": "git branch выдаёт простыню — там штук 80 task/T0xx и worktree-agent-* веток от параллельных агентов. можешь прибрать те что уже влиты?", "should_trigger": true},
+  {"query": "закончили Phase 6, всё замержено в feature-ветку. подчисти phase/* и task/* branches", "should_trigger": true},
+  {"query": "у меня .claude/worktrees забит десятками agent-* директорий после task-runner-parallel, снеси мёртвые", "should_trigger": true},
+  {"query": "implementation done — tidy up the leftover branches and worktrees from the spec-kit run", "should_trigger": true},
+  {"query": "clean up merged task and phase branches please, but don't touch anything that isn't merged yet", "should_trigger": true},
+  {"query": "после фичи осталась куча worktree-* веток и привязанных worktree. разгреби, но чтобы ничего с несохранёнными коммитами не потерялось", "should_trigger": true},
+  {"query": "git worktree list показывает 28 штук, все от завершённой имплементации. можно удалить те, что уже в feature branch?", "should_trigger": true},
+  {"query": "we shipped the feature. remove the throwaway phase/N and task/T### branches that are already in the feature branch", "should_trigger": true},
+  {"query": "мой git репо оброс agent-generated ветками после нескольких фаз task-runner'а, наведи порядок", "should_trigger": true},
+
+  {"query": "создай новую ветку feature/payment-links от main и переключись на неё", "should_trigger": false},
+  {"query": "смержи task/T099 в текущую feature-ветку через --no-ff, там доделан фикс валидатора", "should_trigger": false},
+  {"query": "почисти node_modules и build артефакты в apps/mobile, диск забился", "should_trigger": false},
+  {"query": "запусти phase-runner для Phase 7, надо прогнать оставшиеся задачи", "should_trigger": false},
+  {"query": "git log слишком захламлён мелкими коммитами, сделай squash последних 8 в один перед мержем", "should_trigger": false},
+  {"query": "удали удалённую ветку origin/feature/old-thing, она давно не нужна на remote", "should_trigger": false},
+  {"query": "покажи какие ветки уже смержены в main, просто список, ничего не трогай", "should_trigger": false},
+  {"query": "у меня worktree в .claude/worktrees/agent-abc с несохранёнными правками, надо достать оттуда изменения обратно в основную ветку", "should_trigger": false},
+  {"query": "откати последний merge phase/6, он что-то сломал, нужно вернуть feature-ветку на коммит до него", "should_trigger": false},
+  {"query": "clean up my Docker containers and dangling images, docker system is eating 40gb", "should_trigger": false}
+]

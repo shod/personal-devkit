@@ -12,7 +12,7 @@
     {
       "name": "workflow-kit",
       "source": "./plugins/workflow-kit",
-      "description": "Framework-agnostic workflow: graphify, task-runner, phase-runner, spec-kit overlay, time-log, squash-commits."
+      "description": "Framework-agnostic workflow: graphify, task-runner, phase-runner, spec-kit overlay, time-log, squash-commits, git-cleanup."
     },
     {
       "name": "laravel-kit",

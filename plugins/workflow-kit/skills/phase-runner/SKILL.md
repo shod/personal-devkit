@@ -14,7 +14,7 @@ allowed-tools: Agent Read Grep Glob Skill AskUserQuestion Edit Bash PowerShell T
 model: sonnet
 metadata:
   author: speckit
-  version: "1.6"
+  version: "1.7"
   category: task-orchestration
 ---
 
@@ -24,7 +24,7 @@ Reads tasks.md, determines which tasks belong to the requested phase, and runs t
 phase on **ONE phase branch** (`{phase_branch_prefix}{N}-{feature-slug}`, e.g.
 `phase/3-007-bookings-export-fields`):
 - Create the phase branch **once** (from the feature branch).
-- Run all phase tasks ON it — one commit per task (traceability preserved):
+- Run all phase tasks ON it — one commit per task while the phase runs (squashed to one phase commit at the end):
   - **By default (no `--parallel`): every task runs SEQUENTIALLY** directly on the phase
     branch via `task-runner` — no worktrees, no merge-back. A `[P]` marker in tasks.md is
     read as "this task *could* be parallelised", not as an instruction to do so.
@@ -32,8 +32,9 @@ phase on **ONE phase branch** (`{phase_branch_prefix}{N}-{feature-slug}`, e.g.
     `task-runner-parallel` (isolated worktrees implement and commit concurrently;
     `task-runner-parallel` itself then merges each worktree branch back into the phase
     branch **sequentially, one at a time** — a single writer by construction, not a lock).
-- Run **Pint + PHPStan + Tests ONCE** for the whole phase (CHECKS), then **ONE `--no-ff`
-  merge** of the phase branch into the feature branch.
+- Run **Pint + PHPStan + Tests ONCE** for the whole phase (CHECKS), then **squash** the phase
+  branch into one commit and **fast-forward** the feature branch to it (`--ff-only`). The
+  feature branch gets **one commit per phase**.
 
 > **Why sequential by default.** The value of phase-runner is the *batching* — one branch,
 > one CHECKS run, one merge — which is orthogonal to parallelism. In practice worktree
@@ -173,7 +174,7 @@ sequential and commits directly onto `PHASE_BRANCH`, in tasks.md order. Manual t
     3. {T011} — sequential onto PHASE_BRANCH
     4. {T012} — sequential onto PHASE_BRANCH
     5. CHECKS: Pint + PHPStan + Tests (ONCE)
-    6. Merge {PHASE_BRANCH} → {current_branch} (--no-ff, ONCE)
+    6. Squash {PHASE_BRANCH} → 1 commit, merge → {current_branch} (--ff-only, ONCE)
 ═══════════════════════════════════════════════════
 Start? (yes/no)          ← omit this line entirely when AUTO_CONFIRM = true
 ```
@@ -211,7 +212,7 @@ T009 (sequential) → [T010, T011] (parallel batch) → T012 (sequential)
     2. {T010, T011} — parallel batch (worktrees → merged back into phase branch)
     3. {T012} — sequential       (commit onto phase branch)
     4. CHECKS: Pint + PHPStan + Tests (ONCE)
-    5. Merge {PHASE_BRANCH} → {current_branch} (--no-ff, ONCE)
+    5. Squash {PHASE_BRANCH} → 1 commit, merge → {current_branch} (--ff-only, ONCE)
 ═══════════════════════════════════════════════════
 Start? (yes/no)          ← omit this line entirely when AUTO_CONFIRM = true
 ```
@@ -386,7 +387,7 @@ For each task in the batch, in order:
 
    If **no branch and no commit** matches `{TASK_ID}` AND the task was supposed to create a new file — check if that file exists; if it exists uncommitted, commit it onto `PHASE_BRANCH` and re-run `verify-task`. If neither commit nor file exists, mark as `✗ INCOMPLETE`.
 
-3. **Do NOT mark `[x]` yet.** Tasks are marked complete in tasks.md only after the phase CHECKS pass and the phase branch is merged (Step 7.5). This keeps a failed CHECKS from leaving tasks falsely marked done.
+3. **Do NOT mark `[x]` yet.** Tasks are marked complete in tasks.md only after the phase CHECKS pass (Step 7.5 item 2), on the phase branch, before the squash and the merge. This keeps a failed CHECKS from leaving tasks falsely marked done.
 
 **Guard after the batch (only if `commands.test:guard` is defined):** once every worker branch
 is merged back and verified, run `commands.test:guard` yourself **once** on `PHASE_BRANCH` and
@@ -491,13 +492,53 @@ the merge exactly once.
      accept that agent's "tests passed" / "completed successfully" claim as sufficient — see
      "Never trust agent prose for pass/fail" in Rules.
 
-2. **MERGE** — merge the phase branch into the feature branch once:
+2. **Mark tasks complete — and COMMIT the marks on `PHASE_BRANCH`.** Do this only after
+   CHECKS pass. Replace `- [ ] {TASK_ID}` → `- [x] {TASK_ID}` in `$TASKS_PATH` for **every**
+   task run in this phase (parallel and sequential). Manual/`⊘ MANUAL` tasks (Step 4.5) stay `[ ]`.
+   Then commit `tasks.md` **on the phase branch**, so the marks go into the phase commit:
+   ```
+   git add {$TASKS_PATH}
+   git commit -m "chore(phase-{N}): mark tasks complete"
+   ```
+   The marks reach the feature branch only with the merge (item 5). If the merge stops, the
+   feature branch has no false `[x]` marks.
+
+   ⚠ **Leaving `tasks.md` uncommitted is a BUG, not a cosmetic omission.** The marks live only
+   in the working tree, and this skill's own out-of-scope restore (Steps 6.1 / 7.4d / Rules →
+   "Verifying task completion") runs `git checkout HEAD -- <file>` on the next phase — which
+   reverts them. Observed in production: Phase 1 marked T001–T004 `[x]` uncommitted, Phase 2's
+   cleanup reverted `tasks.md`, and T001–T004 silently went back to `[ ]` while Phase 2's own
+   (committed) marks survived — the phase looked unrun. Mark **and** commit in the same step.
+
+3. **Parallel mode only — remove this phase's worktrees and task branches.** Skip this item
+   when `PARALLEL_MODE = false` (no task branches exist). Do it **before** the squash: after
+   the squash, the task branches are no longer ancestors of any branch, and `git branch -d`
+   refuses them. For every `[P]` task of this phase, while on `PHASE_BRANCH`:
+   ```
+   git worktree remove <worktree path of {task_branch_prefix}{TASK_ID}>   # if it exists
+   git branch -d {task_branch_prefix}{TASK_ID}
+   ```
+   Use `-d` only, never `-D`. If git refuses a branch or a dirty worktree → **STOP** and report.
+
+4. **SQUASH** — make one commit from all commits of the phase branch:
+   ```
+   Skill: squash-commits "--scope=phase --base={current_branch} --message=\"feat(phase-{N}): {PHASE_TITLE}\""
+   ```
+   - **`PHASE_TITLE`** = the text of the phase heading in tasks.md after `Phase {N}:`, for
+     example `## Phase 3: User Story 1 - Export fields` → `User Story 1 - Export fields`.
+     Remove a `(Priority: …)` suffix. Cut it to 60 characters.
+   - The message has **only the subject line**. Do not add a list of tasks to the body.
+   - On any STOP from the skill → **STOP**. Do not merge.
+
+5. **MERGE** — fast-forward the feature branch to the phase commit:
    ```
    Skill: task-git "{N} --scope=phase --phase-action=MERGE --phase-branch={PHASE_BRANCH} --auto"
    ```
-   This does `git checkout {current_branch}; git merge --no-ff {PHASE_BRANCH}`. **Never** into development. On conflict the skill **STOPs** — surface it and do not mark `[x]`.
+   This does `git checkout {current_branch}; git merge --ff-only {PHASE_BRANCH}`. The result
+   is **one commit per phase** on the feature branch. **Never** into development. If the
+   fast-forward is not possible, the skill **STOPs** — surface it.
 
-3. **Migrations — run them against the dev database (do NOT skip silently).**
+6. **Migrations — run them against the dev database (do NOT skip silently).**
    The phase tests run on `RefreshDatabase`, which migrates a **throwaway** schema; the
    developer's dev database is left un-migrated, so a phase that added a migration leaves
    the local app broken until it is applied. Immediately after the merge:
@@ -513,24 +554,7 @@ the merge exactly once.
    if present, otherwise the project's `artisan migrate --force` equivalent) — **do not
    hand-write `docker compose`**. If no such command is defined, or the run fails, do **not**
    treat the phase as broken: report the exact command the user must run themselves and
-   carry on to step 4.
-
-4. **Mark tasks complete — and COMMIT the marks** — only **after** a successful merge, replace
-   `- [ ] {TASK_ID}` → `- [x] {TASK_ID}` in `$TASKS_PATH` for **every** task run in this phase
-   (parallel and sequential). Manual/`⊘ MANUAL` tasks (Step 4.5) stay `[ ]`.
-
-   Then **immediately commit `tasks.md`** on the feature branch, as its own commit:
-   ```
-   git checkout {current_branch}
-   git add {$TASKS_PATH}
-   git commit -m "chore(phase-{N}): mark {TASK_ID list} complete"
-   ```
-   ⚠ **Leaving `tasks.md` uncommitted is a BUG, not a cosmetic omission.** The marks live only
-   in the working tree, and this skill's own out-of-scope restore (Steps 6.1 / 7.4d / Rules →
-   "Verifying task completion") runs `git checkout HEAD -- <file>` on the next phase — which
-   reverts them. Observed in production: Phase 1 marked T001–T004 `[x]` uncommitted, Phase 2's
-   cleanup reverted `tasks.md`, and T001–T004 silently went back to `[ ]` while Phase 2's own
-   (committed) marks survived — the phase looked unrun. Mark **and** commit in the same step.
+   carry on.
 
 ### Step 8: Final report
 
@@ -546,8 +570,9 @@ Print the task summary table:
   ✗ T029  — INCOMPLETE: no commit found
   ───────────────────────────────────────────────
   Phase checks (ONCE):   Pint ✓   PHPStan ✓ (changed files)   Tests ✓
-  Phase merge (ONCE):    {PHASE_BRANCH} → {current_branch} (--no-ff)
-  tasks.md marks:        {commit_sha} chore(phase-{N}): mark {TASK_ID list} complete
+  Phase squash:          {M} commits → 1   {short SHA} feat(phase-{N}): {PHASE_TITLE}
+  Phase merge (ONCE):    {PHASE_BRANCH} → {current_branch} (--ff-only)
+  tasks.md marks:        in the phase commit
                          {or ✗ NOT COMMITTED — marks will be lost on the next phase}
   Migrations:            {none | M new → dev DB migrated ✓ | M new → RUN MANUALLY: {cmd}}
 ═══════════════════════════════════════════════════
@@ -559,8 +584,9 @@ Print the task summary table:
 - **timing** — parse `duration_ms` from the agent result's `<usage>` block; format as `Xm Ys`.
 - **tokens** — parse `subagent_tokens` from the agent result's `<usage>` block.
 - **Phase checks line** — Pint / PHPStan / Tests are reported **ONCE** for the whole phase (not per task), taken from the `task-git --phase-action=CHECKS` output at Step 7.5. Per-task rows no longer carry per-task check marks (checks were deferred).
-- **Phase merge line** — the single `--no-ff` merge from Step 7.5.
-- **tasks.md marks line** — the `chore(phase-{N}): mark ... complete` commit from Step 7.5 item 4; take the sha from `git log -1 --format=%h -- {$TASKS_PATH}` on `{current_branch}`. If `git status --short -- {$TASKS_PATH}` is still dirty, report `✗ NOT COMMITTED` here — this is a data-loss condition, not a cosmetic gap, so surface it in the report instead of letting it be discovered a phase later.
+- **Phase squash line** — the `squash-commits --scope=phase` output from Step 7.5 item 4.
+- **Phase merge line** — the single `--ff-only` merge from Step 7.5 item 5.
+- **tasks.md marks line** — the marks commit from Step 7.5 item 2 is part of the phase commit after the squash. If `git status --short -- {$TASKS_PATH}` is still dirty, report `✗ NOT COMMITTED` here — this is a data-loss condition, not a cosmetic gap, so surface it in the report instead of letting it be discovered a phase later.
 - **skipped tasks** — show only task ID and "skipped (already [x])"; no timing or tokens.
 - **Wall time** — sum of all `duration_ms` values (parallel tasks count once, not summed).
 
@@ -648,9 +674,9 @@ Step 7 (sequential tasks), Step 7.5 (phase CHECKS), and the final report (Step 8
 - **ONE `PHASE_BRANCH` (`{phase_branch_prefix}{N}-{FEATURE_SLUG}`, e.g. `phase/3-007-bookings-export-fields`) per phase**, created ONCE (Step 5.6) from the feature branch. The slug is the spec directory of `$TASKS_PATH` — resolved once at Step 5.5 and passed verbatim to every agent and `task-git` call (`--phase-branch=`); nothing downstream re-derives it.
 - **Every** task in the phase is committed onto `PHASE_BRANCH` (one commit per task — `feat({TASK_ID}): ...`). In the default sequential mode the agent commits straight onto `PHASE_BRANCH`. Only under `--parallel` do `[P]` tasks use isolated worktrees branched off `PHASE_BRANCH` HEAD; workers commit there only, and `task-runner-parallel` merges every worktree branch **back into `PHASE_BRANCH` itself, sequentially, one at a time** (never the workers, never concurrently) — NOT into the feature branch.
 - **Checks run ONCE per phase** (Step 7.5): Pint + PHPStan(changed files) + Tests, deferred from each task via `--defer-checks`.
-- **The phase branch merges into the feature branch exactly ONCE** (Step 7.5, `--no-ff`), only after CHECKS pass. **NEVER** into development. **PROHIBITED: `--squash`.**
+- **The phase branch merges into the feature branch exactly ONCE** (Step 7.5), only after CHECKS pass: first `squash-commits --scope=phase` makes one phase commit, then `git merge --ff-only`. **NEVER** into development. **PROHIBITED: `--no-ff` and `git merge --squash`** for the phase merge.
 - Because the name carries the feature slug, a pre-existing `PHASE_BRANCH` can only be **this** feature's interrupted phase — reuse it (Step 5.55), never rename or delete it. A legacy flat `{phase_branch_prefix}{N}` from the old naming scheme is left untouched and is never built on.
-- Tasks are marked `[x]` in tasks.md **only after** the phase merge succeeds — and the mark **MUST be committed in the same step** (`chore(phase-{N}): mark ... complete`); an uncommitted tasks.md is destroyed by the next phase's cleanup.
+- Tasks are marked `[x]` in tasks.md **only after** CHECKS pass, on `PHASE_BRANCH`, before the squash — and the mark **MUST be committed in the same step**; an uncommitted tasks.md is destroyed by the next phase's cleanup. The marks reach the feature branch only with the phase merge.
 - If the phase added migrations, the dev database must be migrated (or the exact command surfaced to the user) after the merge — **never silently** (Step 7.5.3).
 
 ### Parallelism is OPT-IN

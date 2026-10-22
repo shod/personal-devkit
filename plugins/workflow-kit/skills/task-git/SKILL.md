@@ -268,8 +268,10 @@ Show full report:
 ## Phase scope (`--scope=phase`)
 
 Branch-per-Phase mode. ONE branch per phase holds **every** task of that phase (one commit
-per task — traceability preserved); **Pint + PHPStan + Tests run ONCE per phase** (CHECKS
-action), then ONE `--no-ff` merge into the feature branch. Driven exclusively by
+per task while the phase runs); **Pint + PHPStan + Tests run ONCE per phase** (CHECKS
+action). Then `phase-runner` squashes the phase branch into one commit (`squash-commits
+--scope=phase`), and MERGE fast-forwards the feature branch to it (`--ff-only`). The result
+is **one commit per phase** on the feature branch. Driven exclusively by
 `phase-runner`, which passes the phase number positionally and the git sub-step via
 `--phase-action=CREATE|COMMIT|CHECKS|MERGE`.
 
@@ -391,19 +393,24 @@ Output:
 
 ### Phase action MERGE — merge the phase branch into the feature branch (once)
 
-**Condition**: on PHASE_BRANCH, working tree clean, CHECKS passed.
+**Condition**: on PHASE_BRANCH, working tree clean, CHECKS passed, and the phase branch is
+already squashed to **one** commit ahead of FEATURE_BRANCH (`squash-commits --scope=phase`).
 
 1. Show summary: `git log {FEATURE_BRANCH}..{PHASE_BRANCH} --oneline` and `git diff {FEATURE_BRANCH}..{PHASE_BRANCH} --name-only`.
+   - If `git rev-list --count {FEATURE_BRANCH}..{PHASE_BRANCH}` is not `1` → **STOP**:
+     "Phase branch is not squashed. Run squash-commits --scope=phase first."
 2. `git checkout {FEATURE_BRANCH}`
-3. `git merge --no-ff {PHASE_BRANCH} -m "feat(phase-{PHASE_NUM}): merge phase {PHASE_NUM} into feature branch"`
-   - **ONLY `--no-ff`** — preserve every per-task commit. **PROHIBITED: `--squash`.**
+3. `git merge --ff-only {PHASE_BRANCH}`
+   - **ONLY `--ff-only`** — the feature branch gets the one phase commit, with no merge commit.
+     **PROHIBITED: `--no-ff` and `git merge --squash`** in phase scope.
    - Merge into **FEATURE_BRANCH only** — **NEVER `development`**.
-4. On merge conflict → **STOP**, list conflicting files, do **not** resolve automatically.
+4. If the fast-forward is not possible (FEATURE_BRANCH moved after the phase branch was
+   created) → **STOP**. Report it. Do **not** rebase and do **not** merge in another way.
 5. Output:
 ```
-✓ Merge complete: {PHASE_BRANCH} → {FEATURE_BRANCH}
-  Merge commit: feat(phase-{PHASE_NUM}): merge phase {PHASE_NUM} into feature branch
-  Branch {PHASE_BRANCH} retained for history.
+✓ Merge complete: {PHASE_BRANCH} → {FEATURE_BRANCH} (fast-forward)
+  Phase commit: {short SHA} — {phase commit subject}
+  Branch {PHASE_BRANCH} is now fully merged (git-cleanup can delete it).
 ```
 6. If the merged diff contains new migrations
    (`git diff --name-only {FEATURE_BRANCH}@{1}..{FEATURE_BRANCH} -- "*database/migrations/*.php"`
@@ -438,6 +445,8 @@ If `git log {FEATURE_BRANCH}..{TASK_BRANCH}` is empty — output:
 - **PROHIBITED** to delete task branches (retain for history)
 - **PROHIBITED** `git merge --squash` — NEVER use squash. Squash destroys commit history
 - Merge **ONLY** via `git merge --no-ff` (merge commit, Conventional Commits 1.0.0). No other strategies
+- **Exception — phase scope:** MERGE uses `git merge --ff-only` of the already squashed
+  phase branch (see "Phase action MERGE"). The task scope still uses `--no-ff` only.
 - On conflicts — **STOP**, do not resolve automatically
 
 ### No code modification (NON-NEGOTIABLE)
