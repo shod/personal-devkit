@@ -4,6 +4,13 @@ All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this plugin adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **`task-runner-parallel` agent** now runs on `model: sonnet` instead of `model: inherit`,
+  the same as the `task-runner` agent.
+
 ## [0.8.0]
 
 ### Added
