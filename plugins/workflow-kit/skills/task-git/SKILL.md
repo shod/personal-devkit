@@ -12,6 +12,7 @@ metadata:
   author: speckit
   version: "1.4"
   category: git-workflow
+model: sonnet
 ---
 
 # Task Git Skill

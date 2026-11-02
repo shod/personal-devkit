@@ -12,6 +12,7 @@ metadata:
   author: speckit
   version: "2.0"
   category: quality
+model: opus
 ---
 
 # Code Review Skill

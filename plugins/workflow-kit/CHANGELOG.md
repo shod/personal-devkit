@@ -4,6 +4,20 @@ All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this plugin adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Explicit `model` for every skill.** Each `SKILL.md` now sets `model` in its frontmatter:
+  - `opus`: `phase-runner` (was `sonnet`), `review`, `skill-generator`.
+  - `sonnet`: `task-git`, `squash-commits`, `git-cleanup`, `graphify`, `graphify-spec-context`,
+    `hand-off` (plus `task-work` and `task-runner-parallel`, unchanged).
+  - `haiku`: `sh-speckit-archive`, `sdd-archive`, `todo-plans` (plus `time-log`, unchanged).
+  - `inherit`: `analytic-bft` (uses the model of the current session).
+- **`task-runner` agent: corrected the `review` step.** The `review` skill has
+  `disable-model-invocation: true`, so agents cannot start it. The agent now suggests
+  `/review {TASK_ID}` to the user instead of claiming that review runs later automatically.
+
 ## [0.8.1]
 
 ### Changed

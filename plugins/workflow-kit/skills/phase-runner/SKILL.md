@@ -11,7 +11,7 @@ description: >-
   run an entire phase with one command without manually parsing tasks.
 argument-hint: "<phase-number-or-name> [more-phases...] [--parallel] [--auto|--yes|--no-confirm]"
 allowed-tools: Agent Read Grep Glob Skill AskUserQuestion Edit Bash PowerShell TodoWrite
-model: sonnet
+model: opus
 metadata:
   author: speckit
   version: "1.7"

@@ -6,6 +6,7 @@ description: >-
   system feature registry. Accepts a list of files and/or a free-text description.
 argument-hint: <file-or-description> [file2] [file3]
 user-invocable: true
+model: inherit
 allowed-tools: Read Glob Grep Agent mcp__laravel-boost__database-schema mcp__laravel-boost__database-query mcp__laravel-boost__application-info
 metadata:
   author: olegs

@@ -4,6 +4,7 @@ description: "Ground a feature spec in the codebase knowledge graph before /spec
 argument-hint: "(optional) the feature description; defaults to the description already in the conversation"
 user-invocable: true
 disable-model-invocation: false
+model: sonnet
 ---
 
 ## Purpose

@@ -12,6 +12,7 @@ metadata:
   author: speckit
   version: "1.0"
   category: speckit-workflow
+model: haiku
 ---
 
 # Spec Kit Archive Skill
