@@ -1,13 +1,14 @@
-# Code Review Checklists
+# Laravel Review Checklist
 
-Universal review rules across 4 categories. Claude uses this file during AI code analysis (Step 3).
+Laravel-specific review rules in 4 categories. The `workflow-kit:review` skill applies them
+in addition to its own framework-agnostic checklist.
 
-> **This file contains only universal checks** applicable to any Laravel project.
+> **This file contains only checks for any Laravel project.**
 > Project-specific requirements (strict_types, folder structure, API format, performance targets, etc.)
-> come from the **project constitution** (`.specify/memory/constitution.md`) — see Step 1 in SKILL.md.
+> come from the **project constitution** (`.specify/memory/constitution.md`).
 >
-> **Priority**: Laravel Boost guidelines > Constitution > This checklist.
-> When rules conflict — the higher-priority source wins.
+> **Priority**: Constitution > Laravel Boost guidelines > This checklist.
+> When rules conflict, the higher-priority source wins.
 
 ---
 

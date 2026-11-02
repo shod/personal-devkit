@@ -119,10 +119,10 @@ Output:
    - Implement **ONLY** task {TASK_ID}
    - Checks: Pint, PHPStan, Tests
 3. If skill returned error — **STOP**, pass error to user
-4. **AUTO_MODE=false**: suggest to the user to run `/review {TASK_ID}` manually.
-   The `review` skill has `disable-model-invocation: true`, so this agent cannot start it.
-   **AUTO_MODE=true**: skip `review`. No other step runs it automatically.
-   The user can run `/review {TASK_ID}` manually after the phase.
+4. **AUTO_MODE=false**: ask the user if they want a review of this task.
+   If yes, call **Skill tool**: `review` with argument `{TASK_ID}`. Show the summary to the user.
+   **AUTO_MODE=true**: skip `review`. phase-runner reviews the whole phase once
+   (phase-runner Step 7.5, item 1.5).
 
 ---
 

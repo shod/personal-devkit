@@ -6,7 +6,33 @@ this plugin adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+### Added
+
+- **`project-setup` skill.** Creates or updates `.claude-project.json`. Detects the stack
+  (Laravel, Flutter, Python, Node, monorepo), proposes a config from `examples/`, and writes
+  it only after a yes. In an existing config it adds only missing keys. `--check` reports
+  only; `--review-only` adds only the `review` section. `references/schema.md` documents
+  every key.
+- **phase-runner: config check at start** (Step 1.2). Missing file → offers `project-setup`.
+  Missing `paths.phase_branch_prefix` → STOP. Missing `review` or `commands.test` → a
+  one-line notice, the run continues.
+
+- **phase-runner: phase REVIEW step** (Step 7.5, item 1.5). After CHECKS pass, phase-runner
+  runs the review providers from `.claude-project.json` → `review.providers`, each in its own
+  subagent, for `git diff {feature branch}...{phase branch}`. Reports go to
+  `specs/<feature>/reviews/phase-<N>-<skill>.md` and into the phase commit.
+  `review.mode`: `off`, `report` (default, never stops) or `block` (STOP on CRITICAL findings
+  from providers with `can_block: true`). External review skills (for example
+  `mattpocock-skills:code-review`) can be added as providers.
+
 ### Changed
+
+- **`review` skill is now framework-agnostic** (version 3.0). It checks spec compliance,
+  correctness, security, performance, test quality and maintainability. Stack rules come
+  from the skills in `review.rules` (for example `laravel-kit:laravel-review`). New arguments:
+  `--base`, `--phase`, `--out`, `--auto`. The report ends with a machine-readable
+  `REVIEW_RESULT:` line. Removed `disable-model-invocation`, so agents can call it.
+  The Laravel checklist moved to `laravel-kit:laravel-review`.
 
 - **Explicit `model` for every skill.** Each `SKILL.md` now sets `model` in its frontmatter:
   - `opus`: `phase-runner` (was `sonnet`), `review`, `skill-generator`.
@@ -14,9 +40,9 @@ this plugin adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
     `hand-off` (plus `task-work` and `task-runner-parallel`, unchanged).
   - `haiku`: `sh-speckit-archive`, `sdd-archive`, `todo-plans` (plus `time-log`, unchanged).
   - `inherit`: `analytic-bft` (uses the model of the current session).
-- **`task-runner` agent: corrected the `review` step.** The `review` skill has
-  `disable-model-invocation: true`, so agents cannot start it. The agent now suggests
-  `/review {TASK_ID}` to the user instead of claiming that review runs later automatically.
+- **`task-runner` agent: corrected the `review` step.** With `AUTO_MODE=false` the agent
+  offers `review {TASK_ID}` and calls it on yes. With `AUTO_MODE=true` it skips review,
+  because phase-runner reviews the whole phase.
 
 ## [0.8.1]
 

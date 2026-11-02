@@ -80,11 +80,30 @@ If `$ARGUMENTS` contains no phase number — **STOP** and ask the user:
 4. If `$PHASES` is empty — stop and ask the user to specify.
 5. **If `$PHASES` contains more than one phase → set `AUTO_CONFIRM = true`.** Running several phases is itself an explicit instruction to proceed without asking.
 
+### Step 1.2: Check `.claude-project.json`
+
+Do this once per run, before Step 1.5. The format is in the `project-setup` skill →
+`references/schema.md`.
+
+1. **The file does not exist** → **STOP**. Ask with AskUserQuestion (also when `AUTO_CONFIRM = true`):
+   "`.claude-project.json` is missing. phase-runner needs it for branch prefixes and commands."
+   - "Run project-setup now" → call **Skill tool**: `project-setup`. When it finishes and the
+     file exists, continue from Step 1.5. If the user cancels the setup, STOP the run.
+   - "Stop" → STOP the run.
+   Do **not** create the file yourself.
+2. **The file has invalid JSON** → **STOP** and show the parse error.
+3. **A required key is missing** (`paths.phase_branch_prefix`) → **STOP**.
+   Name the missing key and suggest `/project-setup`.
+4. **Optional keys are missing** → do not stop. Print one line per key and continue:
+   - no `commands.test` and no `commands.test:bg` → `⚠ no test command — phase CHECKS cannot run tests`
+   - no `review` → `ℹ review: defaults (mode=report, workflow-kit:review). Configure: /project-setup --review-only`
+   - no `review.rules` while `review.mode` is not `off` → `ℹ review: no stack rules — only the general checklist`
+
 ### Step 1.5: Multi-phase loop
 
 If `$PHASES` has more than one entry, run Steps 2–8 **for each phase in order**, fully completing one phase (CHECKS + MERGE + marking `[x]`) before starting the next. Resolve `$TASKS_PATH` once (Step 2) and reuse it for all phases. Each phase gets its own `PHASE_BRANCH`.
 
-Stop the whole run (do not start the remaining phases) if a phase ends with an INCOMPLETE task, a CHECKS failure, or a merge conflict — report which phases completed and which were not attempted. A phase that is already fully `[x]` is skipped and does not stop the loop.
+Stop the whole run (do not start the remaining phases) if a phase ends with an INCOMPLETE task, a CHECKS failure, a REVIEW stop (`mode = block`), or a merge conflict — report which phases completed and which were not attempted. A phase that is already fully `[x]` is skipped and does not stop the loop.
 
 After the last phase, print one combined final report (Step 8) with a per-phase section.
 
@@ -157,7 +176,7 @@ sequential and commits directly onto `PHASE_BRANCH`, in tasks.md order. Manual t
 ═══════════════════════════════════════════════════
   Queue: {$PHASES joined}  (phase {i} of {total})     ← only when >1 phase
   Mode: SEQUENTIAL (default — pass --parallel to enable [P] batching)
-  Model: 1 phase branch → {pending} tasks → 1 CHECKS → 1 merge
+  Model: 1 phase branch → {pending} tasks → 1 CHECKS → 1 REVIEW → 1 merge
   Total tasks: {total}  |  Skipped (done): {done}
   To run: {pending}
 
@@ -174,7 +193,8 @@ sequential and commits directly onto `PHASE_BRANCH`, in tasks.md order. Manual t
     3. {T011} — sequential onto PHASE_BRANCH
     4. {T012} — sequential onto PHASE_BRANCH
     5. CHECKS: Pint + PHPStan + Tests (ONCE)
-    6. Squash {PHASE_BRANCH} → 1 commit, merge → {current_branch} (--ff-only, ONCE)
+    6. REVIEW: {review providers | off} (ONCE)
+    7. Squash {PHASE_BRANCH} → 1 commit, merge → {current_branch} (--ff-only, ONCE)
 ═══════════════════════════════════════════════════
 Start? (yes/no)          ← omit this line entirely when AUTO_CONFIRM = true
 ```
@@ -196,7 +216,7 @@ T009 (sequential) → [T010, T011] (parallel batch) → T012 (sequential)
 ═══════════════════════════════════════════════════
   Queue: {$PHASES joined}  (phase {i} of {total})     ← only when >1 phase
   Mode: PARALLEL (--parallel) — [P] tasks run in isolated worktrees
-  Model: 1 phase branch → {pending} tasks → 1 CHECKS → 1 merge
+  Model: 1 phase branch → {pending} tasks → 1 CHECKS → 1 REVIEW → 1 merge
   Total tasks: {total}  |  Skipped (done): {done}
   To run: {pending}
 
@@ -212,7 +232,8 @@ T009 (sequential) → [T010, T011] (parallel batch) → T012 (sequential)
     2. {T010, T011} — parallel batch (worktrees → merged back into phase branch)
     3. {T012} — sequential       (commit onto phase branch)
     4. CHECKS: Pint + PHPStan + Tests (ONCE)
-    5. Squash {PHASE_BRANCH} → 1 commit, merge → {current_branch} (--ff-only, ONCE)
+    5. REVIEW: {review providers | off} (ONCE)
+    6. Squash {PHASE_BRANCH} → 1 commit, merge → {current_branch} (--ff-only, ONCE)
 ═══════════════════════════════════════════════════
 Start? (yes/no)          ← omit this line entirely when AUTO_CONFIRM = true
 ```
@@ -223,7 +244,7 @@ If the phase has **only parallel** or **only sequential** tasks — show the app
 - If **`AUTO_CONFIRM = true`** (several phases were requested, or `--auto` / `--yes` / `-y` / `--no-confirm` was passed) → **do NOT call AskUserQuestion**. Print the plan followed by `Auto-confirmed ({reason: multiple phases | --auto flag}) — starting.` and proceed straight to Step 5.5.
 - Otherwise (a single phase, no flag) → ask for confirmation via **AskUserQuestion** before starting.
 
-`AUTO_CONFIRM` suppresses only this start-of-phase prompt. It never suppresses the **STOP** points (errors, INCOMPLETE tasks, failed CHECKS, merge conflicts, ambiguous spec at Step 2d) — those still halt and ask.
+`AUTO_CONFIRM` suppresses only this start-of-phase prompt. It never suppresses the **STOP** points (errors, INCOMPLETE tasks, failed CHECKS, REVIEW stops in `block` mode, merge conflicts, ambiguous spec at Step 2d) — those still halt and ask.
 
 ### Step 5.5: Pre-flight git health + resolve the feature branch & task-branch naming
 
@@ -492,6 +513,75 @@ the merge exactly once.
      accept that agent's "tests passed" / "completed successfully" claim as sufficient — see
      "Never trust agent prose for pass/fail" in Rules.
 
+1.5. **REVIEW** — run the AI code review once for the whole phase. Do this only after CHECKS pass.
+
+   **Configuration.** Read `review` from `.claude-project.json`:
+   ```json
+   "review": {
+     "mode": "report",
+     "rules": ["laravel-kit:laravel-review"],
+     "providers": [
+       { "skill": "workflow-kit:review", "args": "--base={base} --phase={N} --out={out} --auto", "can_block": true },
+       { "skill": "mattpocock-skills:code-review", "args": "{base} — spec: {spec_path}" }
+     ]
+   }
+   ```
+   - `mode`: `off` (skip this item), `report` (write reports, never stop), or `block`
+     (STOP on CRITICAL findings). Default: `report`.
+   - `rules`: stack-rule skills for `workflow-kit:review`. Default: none.
+   - `providers`: the review skills to run. If the key is absent, use only
+     `workflow-kit:review` with the args above and `can_block: true`.
+     If the key is an empty list (`[]`), run no provider: write `Review: no providers`
+     in the final report and go to item 2.
+   - Placeholders in `args`: `{base}` = `{current_branch}`, `{N}` = phase number,
+     `{spec_path}` = `spec.md` next to `$TASKS_PATH`, `{tasks_path}` = `$TASKS_PATH`,
+     `{out}` = the report path of this provider (see below).
+   - If `review` is absent, use the defaults. If `mode` is `off`, write `Review: off` in the
+     final report and go to item 2.
+
+   **Report paths.** Each provider writes one file:
+   `{feature folder}/reviews/phase-{N}-{provider-slug}.md`, where `{provider-slug}` is the
+   skill name with `:` replaced by `-` (for example `workflow-kit-review`).
+
+   **Run the providers.** For each provider, in the order of the list:
+   1. Make sure that you are on `PHASE_BRANCH`.
+   2. Start one subagent per provider. Start all providers in one message, so they run in parallel:
+      ```
+      Agent(
+        subagent_type: "general-purpose",
+        description: "Phase {N} review: {skill}",
+        prompt: "Call the Skill tool with skill \"{skill}\" and args \"{args}\".
+                 Do NOT change any project file, do NOT commit, do NOT run git commands that
+                 change state. Do NOT pass --fix or similar flags. Do not ask the user
+                 questions; if the skill needs an answer, use the values in the args.
+                 If the skill does not write the report file itself, write its full output
+                 to {out}. Return the full report text."
+      )
+      ```
+   3. After all subagents return, check that each `{out}` file exists.
+      If a file is missing or empty, mark that provider `✗ error` and continue.
+      A provider error never blocks the merge.
+
+   **Read the result.** For each provider with `can_block: true`, read the **last
+   `REVIEW_RESULT:` line from its report file** with the Read tool. Do not use the
+   subagent's prose. See "Never trust agent prose for pass/fail" in Rules.
+   - The line is missing → mark the provider `✗ error` (no result line). Do not block.
+   - Providers without `can_block` are information only. Do not parse them for a verdict.
+
+   **Commit the reports** on `PHASE_BRANCH`, so they go into the phase commit:
+   ```
+   git add {feature folder}/reviews/
+   git commit -m "docs(phase-{N}): add code review reports"
+   ```
+
+   **Decide.**
+   - `mode = report` → print the counts and the CRITICAL titles. Continue to item 2.
+   - `mode = block` and the sum of `critical` over blocking providers is 0 → continue to item 2.
+   - `mode = block` and `critical > 0` → **STOP**. Print the CRITICAL findings and the report
+     paths. Ask the user with AskUserQuestion (also when AUTO_CONFIRM = true):
+     - "Stop — I fix the findings on {PHASE_BRANCH}" → STOP the run. Do not mark, squash or merge.
+     - "Merge anyway" → continue to item 2. Write `Review: CRITICAL accepted by user` in the final report.
+
 2. **Mark tasks complete — and COMMIT the marks on `PHASE_BRANCH`.** Do this only after
    CHECKS pass. Replace `- [ ] {TASK_ID}` → `- [x] {TASK_ID}` in `$TASKS_PATH` for **every**
    task run in this phase (parallel and sequential). Manual/`⊘ MANUAL` tasks (Step 4.5) stay `[ ]`.
@@ -570,6 +660,8 @@ Print the task summary table:
   ✗ T029  — INCOMPLETE: no commit found
   ───────────────────────────────────────────────
   Phase checks (ONCE):   Pint ✓   PHPStan ✓ (changed files)   Tests ✓
+  Phase review (ONCE):   {off | mode=report|block}
+                         {skill}: C{n} W{n} I{n} → {report path}   (one line per provider, or ✗ error)
   Phase squash:          {M} commits → 1   {short SHA} feat(phase-{N}): {PHASE_TITLE}
   Phase merge (ONCE):    {PHASE_BRANCH} → {current_branch} (--ff-only)
   tasks.md marks:        in the phase commit
@@ -584,6 +676,7 @@ Print the task summary table:
 - **timing** — parse `duration_ms` from the agent result's `<usage>` block; format as `Xm Ys`.
 - **tokens** — parse `subagent_tokens` from the agent result's `<usage>` block.
 - **Phase checks line** — Pint / PHPStan / Tests are reported **ONCE** for the whole phase (not per task), taken from the `task-git --phase-action=CHECKS` output at Step 7.5. Per-task rows no longer carry per-task check marks (checks were deferred).
+- **Phase review line** — from Step 7.5 item 1.5. Counts come from the `REVIEW_RESULT:` line of each report file. Providers without that line show only the report path. Show `off` when `review.mode = off`.
 - **Phase squash line** — the `squash-commits --scope=phase` output from Step 7.5 item 4.
 - **Phase merge line** — the single `--ff-only` merge from Step 7.5 item 5.
 - **tasks.md marks line** — the marks commit from Step 7.5 item 2 is part of the phase commit after the squash. If `git status --short -- {$TASKS_PATH}` is still dirty, report `✗ NOT COMMITTED` here — this is a data-loss condition, not a cosmetic gap, so surface it in the report instead of letting it be discovered a phase later.
