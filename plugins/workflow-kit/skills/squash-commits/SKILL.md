@@ -11,6 +11,7 @@ metadata:
   author: speckit
   version: "1.1"
   category: git-workflow
+model: sonnet
 ---
 
 # Squash Commits Skill

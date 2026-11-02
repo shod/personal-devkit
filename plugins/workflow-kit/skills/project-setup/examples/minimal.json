@@ -1,0 +1,17 @@
+{
+  "_comment": "Minimal config: only what phase-runner needs. Add commands for your stack.",
+  "commands": {
+    "test": "npm test 2>&1"
+  },
+  "checks": [
+    "test"
+  ],
+  "paths": {
+    "tasks_md": "specs/*/tasks.md",
+    "task_branch_prefix": "task/",
+    "phase_branch_prefix": "phase/"
+  },
+  "review": {
+    "mode": "report"
+  }
+}

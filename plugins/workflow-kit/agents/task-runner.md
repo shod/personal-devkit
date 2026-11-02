@@ -119,8 +119,10 @@ Output:
    - Implement **ONLY** task {TASK_ID}
    - Checks: Pint, PHPStan, Tests
 3. If skill returned error — **STOP**, pass error to user
-4. **AUTO_MODE=false**: request confirmation to run `review` from user
-   **AUTO_MODE=true**: skip `review` (will be run separately after parallel execution)
+4. **AUTO_MODE=false**: ask the user if they want a review of this task.
+   If yes, call **Skill tool**: `review` with argument `{TASK_ID}`. Show the summary to the user.
+   **AUTO_MODE=true**: skip `review`. phase-runner reviews the whole phase once
+   (phase-runner Step 7.5, item 1.5).
 
 ---
 

@@ -9,6 +9,8 @@ Laravel expertise, reusable across Laravel backends.
   notifications, tags). Uses `vendor/bin/sail artisan …` (both projects run Sail)
 - **larastan** — PHPStan/LaraStan static analysis (horoscope targets level ≥ 8)
 - **pint** — Laravel Pint formatting gate
+- **laravel-review** — Laravel rules for the `workflow-kit:review` skill. Enable it in
+  `.claude-project.json` → `review.rules: ["laravel-kit:laravel-review"]`
 
 ## Applies cleanly to horoscope
 Laravel 12 / PHP 8.3 / Sail / Sanctum / Horizon / Pint / larastan ≥8 / Pest —

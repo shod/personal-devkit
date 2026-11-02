@@ -11,6 +11,7 @@ description: >-
   agent-generated refs. Deletes ONLY branches already merged into the current
   feature branch, always shows a plan first, and never force-deletes unmerged
   work without a separate explicit yes.
+model: sonnet
 ---
 
 # Git Cleanup — remove merged task/phase/worktree leftovers

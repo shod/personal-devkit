@@ -15,6 +15,7 @@ metadata:
   author: Oleg Shmyk
   version: "1.0"
   category: speckit-workflow
+model: sonnet
 ---
 
 # Hand-off Skill
