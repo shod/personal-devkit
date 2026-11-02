@@ -13,6 +13,23 @@ this plugin adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
   it only after a yes. In an existing config it adds only missing keys. `--check` reports
   only; `--review-only` adds only the `review` section. `references/schema.md` documents
   every key.
+- **`checks` in `.claude-project.json`: framework-agnostic phase CHECKS.** A list of
+  `commands` keys that phase CHECKS runs in order, for example
+  `["format", "lint", "typecheck", "test"]` or `["flutter:format", "flutter:analyze", "test"]`.
+  Any key with a `{key}:bg` + `{key}:bg:wait` pair runs detached in the container (before:
+  only `test`). A check that changes files gets a `style(phase-N): {key}` commit.
+  New placeholders `{FILES}`, `{FILES:<glob>}` and `{BASE}`. Without `checks`, the old list
+  `pint` → `phpstan` (changed PHP files) → `test` is used, so existing Laravel projects work
+  as before. An empty check list now STOPs and asks, instead of passing in silence
+  (Flutter and Python projects had no real CHECKS before).
+- **phase-runner: resume** (Step 5.57). When the phase branch already exists (a run stopped
+  on CHECKS, REVIEW or an error), every unmarked task is checked with `verify-task`. Tasks that
+  are already on the phase branch are skipped and marked `[x]` with the others. Before, a
+  re-run executed all tasks of the phase again. A run that starts on a phase branch now STOPs
+  with instructions.
+- **phase-runner: review fix loop** (Step 7.5, item 1.6). In `block` mode, CRITICAL findings can
+  be fixed by an agent (`fix(phase-N): review findings (round R)`), then CHECKS and REVIEW run
+  again. `review.autofix` skips the question; `review.max_fix_rounds` (default 2) limits the loop.
 - **phase-runner: config check at start** (Step 1.2). Missing file → offers `project-setup`.
   Missing `paths.phase_branch_prefix` → STOP. Missing `review` or `commands.test` → a
   one-line notice, the run continues.

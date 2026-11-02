@@ -3,6 +3,9 @@
   "commands": {
     "test": "npm test 2>&1"
   },
+  "checks": [
+    "test"
+  ],
   "paths": {
     "tasks_md": "specs/*/tasks.md",
     "task_branch_prefix": "task/",

@@ -7,17 +7,23 @@
     "exec": "docker compose -f \"./docker-compose.yml\" exec -u sail laravel.test"
   },
   "commands": {
-    "up":           "docker compose -f \"./docker-compose.yml\" up -d 2>&1",
-    "pint":         "docker compose -f \"./docker-compose.yml\" exec -u sail laravel.test ./vendor/bin/pint --format=json 2>&1",
-    "phpstan":      "docker compose -f \"./docker-compose.yml\" exec -u sail laravel.test ./vendor/bin/phpstan analyse --memory-limit=512M 2>&1",
-    "test":         "docker compose -f \"./docker-compose.yml\" exec -u sail laravel.test php artisan test --compact 2>&1",
-    "test:filter":  "docker compose -f \"./docker-compose.yml\" exec -u sail laravel.test php artisan test --compact --filter={FILTER} 2>&1",
-    "test:bg":      "docker compose -f \"./docker-compose.yml\" exec -d -u sail laravel.test sh -c 'rm -f storage/logs/test-run.log; php artisan test --compact --colors=never > storage/logs/test-run.log 2>&1; echo EXIT=$? >> storage/logs/test-run.log'",
+    "up": "docker compose -f \"./docker-compose.yml\" up -d 2>&1",
+    "pint": "docker compose -f \"./docker-compose.yml\" exec -u sail laravel.test ./vendor/bin/pint --format=json 2>&1",
+    "phpstan": "docker compose -f \"./docker-compose.yml\" exec -u sail laravel.test ./vendor/bin/phpstan analyse --memory-limit=512M 2>&1",
+    "phpstan:changed": "docker compose -f \"./docker-compose.yml\" exec -u sail laravel.test ./vendor/bin/phpstan analyse --memory-limit=512M {FILES:*.php} 2>&1",
+    "test": "docker compose -f \"./docker-compose.yml\" exec -u sail laravel.test php artisan test --compact 2>&1",
+    "test:filter": "docker compose -f \"./docker-compose.yml\" exec -u sail laravel.test php artisan test --compact --filter={FILTER} 2>&1",
+    "test:bg": "docker compose -f \"./docker-compose.yml\" exec -d -u sail laravel.test sh -c 'rm -f storage/logs/test-run.log; php artisan test --compact --colors=never > storage/logs/test-run.log 2>&1; echo EXIT=$? >> storage/logs/test-run.log'",
     "test:bg:wait": "until grep -q '^EXIT=' storage/logs/test-run.log 2>/dev/null; do sleep 15; done; grep -E 'Tests:|Duration|FAILED|EXIT=' storage/logs/test-run.log",
-    "migrate":      "docker compose -f \"./docker-compose.yml\" exec -u sail laravel.test php artisan migrate --force 2>&1",
-    "make:model":   "docker compose -f \"./docker-compose.yml\" exec -u sail laravel.test php artisan make:model {PATH} 2>&1",
-    "make:test":    "docker compose -f \"./docker-compose.yml\" exec -u sail laravel.test php artisan make:test {PATH} --pest 2>&1"
+    "migrate": "docker compose -f \"./docker-compose.yml\" exec -u sail laravel.test php artisan migrate --force 2>&1",
+    "make:model": "docker compose -f \"./docker-compose.yml\" exec -u sail laravel.test php artisan make:model {PATH} 2>&1",
+    "make:test": "docker compose -f \"./docker-compose.yml\" exec -u sail laravel.test php artisan make:test {PATH} --pest 2>&1"
   },
+  "checks": [
+    "pint",
+    "phpstan:changed",
+    "test"
+  ],
   "paths": {
     "backend": ".",
     "tasks_md": "specs/*/tasks.md",
@@ -26,6 +32,8 @@
   },
   "review": {
     "mode": "report",
-    "rules": ["laravel-kit:laravel-review"]
+    "rules": [
+      "laravel-kit:laravel-review"
+    ]
   }
 }

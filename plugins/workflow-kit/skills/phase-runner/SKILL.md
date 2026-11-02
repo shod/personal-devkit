@@ -32,7 +32,7 @@ phase on **ONE phase branch** (`{phase_branch_prefix}{N}-{feature-slug}`, e.g.
     `task-runner-parallel` (isolated worktrees implement and commit concurrently;
     `task-runner-parallel` itself then merges each worktree branch back into the phase
     branch **sequentially, one at a time** — a single writer by construction, not a lock).
-- Run **Pint + PHPStan + Tests ONCE** for the whole phase (CHECKS), then **squash** the phase
+- Run the **project checks ONCE** for the whole phase (CHECKS: `checks` from `.claude-project.json`), then **squash** the phase
   branch into one commit and **fast-forward** the feature branch to it (`--ff-only`). The
   feature branch gets **one commit per phase**.
 
@@ -95,7 +95,8 @@ Do this once per run, before Step 1.5. The format is in the `project-setup` skil
 3. **A required key is missing** (`paths.phase_branch_prefix`) → **STOP**.
    Name the missing key and suggest `/project-setup`.
 4. **Optional keys are missing** → do not stop. Print one line per key and continue:
-   - no `commands.test` and no `commands.test:bg` → `⚠ no test command — phase CHECKS cannot run tests`
+   - no `checks` → `ℹ checks: legacy list (pint, phpstan, test — only the keys that exist). Configure: /project-setup`
+   - the check list is empty (no `checks` and none of `pint`, `phpstan`, `test`) → `⚠ no checks configured — CHECKS will ask before the merge`
    - no `review` → `ℹ review: defaults (mode=report, workflow-kit:review). Configure: /project-setup --review-only`
    - no `review.rules` while `review.mode` is not `off` → `ℹ review: no stack rules — only the general checklist`
 
@@ -192,7 +193,7 @@ sequential and commits directly onto `PHASE_BRANCH`, in tasks.md order. Manual t
     2. {T010} — sequential onto PHASE_BRANCH
     3. {T011} — sequential onto PHASE_BRANCH
     4. {T012} — sequential onto PHASE_BRANCH
-    5. CHECKS: Pint + PHPStan + Tests (ONCE)
+    5. CHECKS: {check list, e.g. pint → phpstan → test} (ONCE)
     6. REVIEW: {review providers | off} (ONCE)
     7. Squash {PHASE_BRANCH} → 1 commit, merge → {current_branch} (--ff-only, ONCE)
 ═══════════════════════════════════════════════════
@@ -231,7 +232,7 @@ T009 (sequential) → [T010, T011] (parallel batch) → T012 (sequential)
     1. {T009} — sequential       (commit onto phase branch)
     2. {T010, T011} — parallel batch (worktrees → merged back into phase branch)
     3. {T012} — sequential       (commit onto phase branch)
-    4. CHECKS: Pint + PHPStan + Tests (ONCE)
+    4. CHECKS: {check list, e.g. pint → phpstan → test} (ONCE)
     5. REVIEW: {review providers | off} (ONCE)
     6. Squash {PHASE_BRANCH} → 1 commit, merge → {current_branch} (--ff-only, ONCE)
 ═══════════════════════════════════════════════════
@@ -272,6 +273,12 @@ Before starting any tasks:
      `{current_branch}` ref) while making the name **unique per feature** — a `phase/3` from
      another feature can no longer collide with this run.
    - Read `task_branch_prefix` (e.g. `task/`). It is needed **only when `PARALLEL_MODE = true`**, for `[P]` **worktree** branches: parallel tasks branch off `PHASE_BRANCH` HEAD as `{task_branch_prefix}{TASK_ID}` and merge **back into `PHASE_BRANCH`** (not the feature branch). In the default sequential mode no task branches are created at all.
+   - **Guard: do not start on a phase branch.** If `{current_branch}` starts with
+     `{phase_branch_prefix}`, **STOP** and print:
+     > You are on the phase branch `{current_branch}`. Commit your changes on it, run
+     > `git checkout <feature branch>`, then run `/phase-runner {N}` again. The run resumes
+     > from the phase branch (Step 5.57).
+     Never derive the feature branch from the phase branch name.
    - Pass `PHASE_BRANCH` explicitly to every agent and to **every `task-git --scope=phase` call
      (via `--phase-branch={PHASE_BRANCH}`)**, so the name is computed once here and never
      re-derived downstream (and `task_branch_prefix` too, in parallel mode).
@@ -307,6 +314,26 @@ cross-feature collision to resolve anymore. **Before** Step 5.6:
    (`git log {current_branch}..{phase_branch_prefix}{N} --oneline` non-empty) → **STOP** and
    ask the user how to proceed, rather than silently starting a second branch for the same
    phase.
+
+### Step 5.57: Resume — skip tasks that are already on the phase branch
+
+Do this only when Step 5.55 found an existing `PHASE_BRANCH` (a run of this phase stopped
+before the merge: failed CHECKS, a REVIEW stop, an INCOMPLETE task, or an interruption).
+`tasks.md` marks are set only after CHECKS and REVIEW pass, so the marks alone do not show
+which tasks are done.
+
+1. For each task in the execution list (not `[x]`), run the verification script against the
+   existing branch:
+   ```
+   bash {plugin_root}/scripts/verify-task.sh {current_branch} {PHASE_BRANCH} {TASK_ID} {SCOPE_GLOBS...}
+   # Windows: {plugin_root}/scripts/verify-task.ps1 with the same arguments
+   ```
+2. **Exit 0** → the task is already on the phase branch. Remove it from the execution list
+   and add it to **`RESUMED_TASKS`**. Print `↺ {TASK_ID} — already on {PHASE_BRANCH} (resume)`.
+3. **Non-zero exit** → keep the task in the execution list. It runs as usual.
+4. `RESUMED_TASKS` tasks get the `[x]` mark at Step 7.5 item 2, together with the tasks of this run.
+5. If the execution list is now empty, skip Steps 6 and 7 and go to Step 7.5.
+   CHECKS and REVIEW run again on the whole phase branch, with any fixes you committed on it.
 
 ### Step 5.6: Create the phase branch (ONCE)
 
@@ -459,7 +486,7 @@ For each task in **tasks.md order**:
      - All project commands (Docker, tests, linting, artisan make:*) are defined in {cwd}/.claude-project.json under "commands.*". Read that file first — do NOT write docker compose commands by hand.
      - Workflow (PHASE MODE): do NOT create a branch. Assert you are on {PHASE_BRANCH} → implement → commit feat({TASK_ID}): ... ONTO {PHASE_BRANCH}. Do NOT merge into the feature branch (the phase branch is merged ONCE by phase-runner after all tasks). Do NOT mark [x] (phase-runner does that after the phase merge).
      - BRANCH (do not improvise): work directly on the already-checked-out {PHASE_BRANCH}. Do NOT create a per-task branch. Never merge into {current_branch} or development.
-     - CHECKS DEFERRED (--defer-checks): do NOT run Pint / PHPStan / the test suite. They run once for the whole phase at the phase CHECKS step.
+     - CHECKS DEFERRED (--defer-checks): do NOT run the phase checks (formatters, linters, static analysis, the test suite). They run once for the whole phase at the phase CHECKS step.
      - GUARD (not deferred): if commands.test:guard exists in .claude-project.json, run it after implementing and BEFORE committing. Red → fix inside SCOPE and re-run; never weaken or skip a guard test; still red → do not commit, STOP and report. Paste the raw guard `Tests:` summary line into your report.
      - Related files (SCOPE): {list of all backend/ and tests/ paths extracted from task text}. Touch ONLY these files. If something outside scope looks broken, note it and move on — do not fix it.
      - AUTO_MODE=true: do NOT ask for commit confirmation or review confirmation — proceed automatically.
@@ -496,17 +523,24 @@ For each task in **tasks.md order**:
 After **all** the phase's tasks are committed on `PHASE_BRANCH`, run the quality gates and
 the merge exactly once.
 
-1. **CHECKS** — run Pint + PHPStan + Tests once for the whole phase:
+1. **CHECKS** — run the project checks once for the whole phase:
    ```
    Skill: task-git "{N} --scope=phase --phase-action=CHECKS --phase-branch={PHASE_BRANCH} --auto"
    ```
-   This runs `commands.pint` (auto-fix → commit `style(phase-{N}): pint` if it changed files), then `commands.phpstan` on changed files only, then the full test suite: via `commands.test:bg` + `commands.test:bg:wait` (detached inside the container, waited for with `run_in_background`) when the project defines both, otherwise via `commands.test`. See `task-git` → "Phase action CHECKS" for the exact procedure.
-   - **Never run the full suite yourself in the foreground from the host** when `commands.test:bg` exists — not even to "double-check" CHECKS. The host-side exec client can be killed for low memory, losing the output and leaving an orphaned run in the container.
-   - On any failure (unfixable Pint violations, PHPStan errors in changed files, or failing tests) the skill **STOPs** and leaves `PHASE_BRANCH` **unmerged**. When this happens → **STOP**, surface the failure to the user, and do **not** merge or mark any task `[x]`.
+   This runs every key of `.claude-project.json` → `checks` in order (for example
+   `["format", "lint", "typecheck", "test"]`). A check that changes files (a formatter) gets
+   a `style(phase-{N}): {key}` commit. A key with a `{key}:bg` + `{key}:bg:wait` pair runs
+   detached inside the container. Without `checks`, the legacy list is used: `pint`,
+   `phpstan` (changed PHP files only), `test`. See `task-git` → "Phase action CHECKS".
+   - **No checks configured** (the list is empty) → `task-git` STOPs. Ask the user with
+     AskUserQuestion (also when AUTO_CONFIRM = true): "Continue without checks" or "Stop —
+     I add `checks` (/project-setup)". On "Continue", write `Checks: none ⚠` in the final report.
+   - **Never run the full suite yourself in the foreground from the host** when a `:bg` command exists — not even to "double-check" CHECKS. The host-side exec client can be killed for low memory, losing the output and leaving an orphaned run in the container.
+   - On any failure (a check exits non-zero or reports errors or failed tests) the skill **STOPs** and leaves `PHASE_BRANCH` **unmerged**. When this happens → **STOP**, surface the failure to the user, and do **not** merge or mark any task `[x]`.
    - **Baseline-red is not a regression** (see Rules): if a failing test was already red on `{current_branch}` before the phase, it is not this phase's regression — note it as pre-existing rather than blocking the merge or weakening the assertion.
-   - **The PASS/FAIL verdict for Pint/PHPStan/Tests MUST come from `task-git`'s own direct
+   - **The PASS/FAIL verdict for every check MUST come from `task-git`'s own direct
      parsing of each command's raw stdout/stderr — never from a subagent's prose summary.**
-     `task-git` runs `commands.pint`/`commands.phpstan`/`commands.test` itself (Bash/PowerShell,
+     `task-git` runs each `commands.{key}` itself (Bash/PowerShell,
      not a delegated agent) and reads the raw output directly, so this step already satisfies
      the rule by construction. If `task-git`'s report to phase-runner ever comes from an agent
      hop instead (e.g. a future refactor delegates CHECKS to a subagent), phase-runner MUST NOT
@@ -577,14 +611,66 @@ the merge exactly once.
    **Decide.**
    - `mode = report` → print the counts and the CRITICAL titles. Continue to item 2.
    - `mode = block` and the sum of `critical` over blocking providers is 0 → continue to item 2.
-   - `mode = block` and `critical > 0` → **STOP**. Print the CRITICAL findings and the report
-     paths. Ask the user with AskUserQuestion (also when AUTO_CONFIRM = true):
-     - "Stop — I fix the findings on {PHASE_BRANCH}" → STOP the run. Do not mark, squash or merge.
-     - "Merge anyway" → continue to item 2. Write `Review: CRITICAL accepted by user` in the final report.
+   - `mode = block` and `critical > 0`:
+     1. Print the CRITICAL findings and the report paths.
+     2. If `review.autofix` is `true` and `FIX_ROUND < review.max_fix_rounds` → go to item 1.6
+        without a question.
+     3. Otherwise ask the user with AskUserQuestion (also when AUTO_CONFIRM = true):
+        - "Fix automatically" (only while `FIX_ROUND < review.max_fix_rounds`) → go to item 1.6.
+        - "Stop — I fix the findings myself" → **STOP** the run. Do not mark, squash or merge.
+          Print: "Fix on `{PHASE_BRANCH}`, commit, `git checkout {current_branch}`, then run
+          `/phase-runner {N}` again. The run resumes from the phase branch."
+        - "Merge anyway" → continue to item 2. Write `Review: CRITICAL accepted by user` in the
+          final report.
+   - Settings: `review.autofix` (default `false`), `review.max_fix_rounds` (default `2`).
+     `FIX_ROUND` starts at `0` for each phase.
+
+1.6. **FIX** — fix the CRITICAL review findings automatically (`mode = block` only).
+
+   ⚠ The fix agent can make a wrong fix, for example weaken a check or a test. The verdict
+   always comes from a new CHECKS run and a new REVIEW, never from the agent's report.
+
+   1. Increase `FIX_ROUND` by 1.
+   2. Collect the CRITICAL findings of the blocking providers from their report files:
+      title, file and line, problem, recommendation. Do not send WARNING or INFO findings.
+   3. Make sure that you are on `PHASE_BRANCH` and the working tree is clean.
+   4. Start one fix agent:
+      ```
+      Agent(
+        subagent_type: "general-purpose",
+        model: "sonnet",
+        description: "Phase {N} review fix, round {FIX_ROUND}",
+        prompt: "You are on branch {PHASE_BRANCH} in {cwd}. Fix ONLY these CRITICAL code review
+                 findings:\n{findings}\n
+                 Rules:
+                 - Change only the files named in the findings and their tests.
+                 - Do NOT weaken, skip or delete tests or assertions. You may add tests.
+                 - Do NOT change tasks.md, the review reports or .claude-project.json.
+                 - Use the commands from .claude-project.json commands.*; never hand-write
+                   docker compose commands.
+                 - If commands.test:guard exists, run it before the commit; it must be green.
+                 - If a finding is wrong (not a real problem), do not change code for it;
+                   explain why in your report.
+                 - Commit once on {PHASE_BRANCH}:
+                   git commit -m \"fix(phase-{N}): review findings (round {FIX_ROUND})\"
+                 - Do NOT merge, rebase, squash or push.
+                 Return: the list of findings with 'fixed' or 'not a real problem' and why."
+      )
+      ```
+   5. Check the result yourself:
+      - `git log -1 --format=%s` on `PHASE_BRANCH` must be the `fix(phase-{N}): …` commit,
+        and `git show --stat HEAD` must show changed files.
+      - No commit → print the agent report. If the agent said that all findings are not real
+        problems, show its reasons and ask the user: "Merge anyway" or "Stop". Otherwise **STOP**.
+   6. Run item 1 (**CHECKS**) again on the whole phase. On failure → **STOP**, as in item 1.
+   7. Run item 1.5 (**REVIEW**) again. The new reports replace the old files; the old versions
+      stay in git history. Then apply **Decide** again.
+   8. After `review.max_fix_rounds` rounds with CRITICAL findings left → do not start another
+      round. Ask the user: "Stop — I fix the findings myself" or "Merge anyway".
 
 2. **Mark tasks complete — and COMMIT the marks on `PHASE_BRANCH`.** Do this only after
    CHECKS pass. Replace `- [ ] {TASK_ID}` → `- [x] {TASK_ID}` in `$TASKS_PATH` for **every**
-   task run in this phase (parallel and sequential). Manual/`⊘ MANUAL` tasks (Step 4.5) stay `[ ]`.
+   task run in this phase (parallel and sequential) **and** every task in `RESUMED_TASKS` (Step 5.57). Manual/`⊘ MANUAL` tasks (Step 4.5) stay `[ ]`.
    Then commit `tasks.md` **on the phase branch**, so the marks go into the phase commit:
    ```
    git add {$TASKS_PATH}
@@ -659,7 +745,7 @@ Print the task summary table:
   ✓ T027  — done        (sequential) 8m 12s   tokens: 98 440
   ✗ T029  — INCOMPLETE: no commit found
   ───────────────────────────────────────────────
-  Phase checks (ONCE):   Pint ✓   PHPStan ✓ (changed files)   Tests ✓
+  Phase checks (ONCE):   {key}: ✓ (auto-fixed)   {key}: ✓   {key}: ✓ (bg)   {or: none ⚠}
   Phase review (ONCE):   {off | mode=report|block}
                          {skill}: C{n} W{n} I{n} → {report path}   (one line per provider, or ✗ error)
   Phase squash:          {M} commits → 1   {short SHA} feat(phase-{N}): {PHASE_TITLE}
@@ -675,12 +761,14 @@ Print the task summary table:
 **How to populate each row:**
 - **timing** — parse `duration_ms` from the agent result's `<usage>` block; format as `Xm Ys`.
 - **tokens** — parse `subagent_tokens` from the agent result's `<usage>` block.
-- **Phase checks line** — Pint / PHPStan / Tests are reported **ONCE** for the whole phase (not per task), taken from the `task-git --phase-action=CHECKS` output at Step 7.5. Per-task rows no longer carry per-task check marks (checks were deferred).
+- **Phase checks line** — one entry per check key, reported **ONCE** for the whole phase (not per task), taken from the `task-git --phase-action=CHECKS` output at Step 7.5. Per-task rows no longer carry per-task check marks (checks were deferred).
 - **Phase review line** — from Step 7.5 item 1.5. Counts come from the `REVIEW_RESULT:` line of each report file. Providers without that line show only the report path. Show `off` when `review.mode = off`.
 - **Phase squash line** — the `squash-commits --scope=phase` output from Step 7.5 item 4.
 - **Phase merge line** — the single `--ff-only` merge from Step 7.5 item 5.
 - **tasks.md marks line** — the marks commit from Step 7.5 item 2 is part of the phase commit after the squash. If `git status --short -- {$TASKS_PATH}` is still dirty, report `✗ NOT COMMITTED` here — this is a data-loss condition, not a cosmetic gap, so surface it in the report instead of letting it be discovered a phase later.
 - **skipped tasks** — show only task ID and "skipped (already [x])"; no timing or tokens.
+- **resumed tasks** (`RESUMED_TASKS`, Step 5.57) — show `↺ {TASK_ID} — resumed (already on phase branch)`; no timing or tokens.
+- **review fix rounds** — add `Review fixes: {FIX_ROUND} round(s) → CRITICAL {before} → {after}` under the phase review line when `FIX_ROUND > 0`.
 - **Wall time** — sum of all `duration_ms` values (parallel tasks count once, not summed).
 
 Then print the orchestrator-level tools report:
@@ -755,7 +843,7 @@ Step 7 (sequential tasks), Step 7.5 (phase CHECKS), and the final report (Step 8
    tasks it touched too (re-run "Verifying task completion" on them), don't just fix the one
    contradiction and continue trusting the rest.
 4. **Independent re-verification is mandatory, not a nice-to-have.** The dedicated CHECKS
-   step (Step 7.5) already runs Pint/PHPStan/Tests directly via `task-git` (Bash/PowerShell,
+   step (Step 7.5) already runs the project checks directly via `task-git` (Bash/PowerShell,
    not a delegated agent) and reads the raw output itself — this satisfies the rule by
    construction and must stay that way. If a future task ever appears in tasks.md that is
    itself titled "run tests"/"verify no regressions"/similar and gets delegated to
@@ -766,7 +854,7 @@ Step 7 (sequential tasks), Step 7.5 (phase CHECKS), and the final report (Step 8
 ### Branch-per-Phase model (the core invariant)
 - **ONE `PHASE_BRANCH` (`{phase_branch_prefix}{N}-{FEATURE_SLUG}`, e.g. `phase/3-007-bookings-export-fields`) per phase**, created ONCE (Step 5.6) from the feature branch. The slug is the spec directory of `$TASKS_PATH` — resolved once at Step 5.5 and passed verbatim to every agent and `task-git` call (`--phase-branch=`); nothing downstream re-derives it.
 - **Every** task in the phase is committed onto `PHASE_BRANCH` (one commit per task — `feat({TASK_ID}): ...`). In the default sequential mode the agent commits straight onto `PHASE_BRANCH`. Only under `--parallel` do `[P]` tasks use isolated worktrees branched off `PHASE_BRANCH` HEAD; workers commit there only, and `task-runner-parallel` merges every worktree branch **back into `PHASE_BRANCH` itself, sequentially, one at a time** (never the workers, never concurrently) — NOT into the feature branch.
-- **Checks run ONCE per phase** (Step 7.5): Pint + PHPStan(changed files) + Tests, deferred from each task via `--defer-checks`.
+- **Checks run ONCE per phase** (Step 7.5): the `checks` list (legacy: Pint + PHPStan(changed files) + Tests), deferred from each task via `--defer-checks`.
 - **The phase branch merges into the feature branch exactly ONCE** (Step 7.5), only after CHECKS pass: first `squash-commits --scope=phase` makes one phase commit, then `git merge --ff-only`. **NEVER** into development. **PROHIBITED: `--no-ff` and `git merge --squash`** for the phase merge.
 - Because the name carries the feature slug, a pre-existing `PHASE_BRANCH` can only be **this** feature's interrupted phase — reuse it (Step 5.55), never rename or delete it. A legacy flat `{phase_branch_prefix}{N}` from the old naming scheme is left untouched and is never built on.
 - Tasks are marked `[x]` in tasks.md **only after** CHECKS pass, on `PHASE_BRANCH`, before the squash — and the mark **MUST be committed in the same step**; an uncommitted tasks.md is destroyed by the next phase's cleanup. The marks reach the feature branch only with the phase merge.

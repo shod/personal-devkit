@@ -14,6 +14,7 @@ An old `feature_branch` key is ignored.
 | `docker` | object | no | Notes about Docker: `compose_file`, `service`, `exec`. Skills do not run these; they run `commands.*`. |
 | `paths` | object | **yes** for phase-runner | Folders and branch prefixes. |
 | `commands` | object | **yes** for phase-runner | Shell commands that agents run. Agents never write Docker or test commands by hand. |
+| `checks` | string[] | recommended | The `commands` keys that phase CHECKS runs, in order. |
 | `review` | object | no | Phase review settings. |
 
 ## `paths`
@@ -32,15 +33,46 @@ End commands with `2>&1`, so the output includes errors.
 
 | Key | Used by | Meaning |
 |---|---|---|
-| `test` | task-work, phase CHECKS | Full test suite. |
+| `test` | task-work, phase CHECKS (legacy) | Full test suite. |
 | `test:filter` | task-work | Tests that match `{FILTER}`. |
 | `test:guard` | every task before commit | Fast tests that must stay green (architecture rules). A few seconds. |
-| `test:bg` | phase CHECKS | Full suite in the background inside the container. Writes a log. |
-| `test:bg:wait` | phase CHECKS | Waits for the `test:bg` log and prints the result. Needs `test:bg`. |
-| `pint` | phase CHECKS | Formatter (Laravel). |
-| `phpstan` | phase CHECKS, task-work | Static analysis (PHP). |
+| `{K}:bg` | phase CHECKS | Runs check `K` in the background inside the container. Writes a log that ends with `EXIT=<code>`. |
+| `{K}:bg:wait` | phase CHECKS | Waits for the `{K}:bg` log and prints the result. Needs `{K}:bg`. |
+| `pint` | phase CHECKS (legacy) | Formatter (Laravel). |
+| `phpstan` | phase CHECKS (legacy), task-work | Static analysis (PHP). |
 | `migrate` | phase-runner after merge | Migrates the dev database. |
 | any other key | agents | Project commands: `make:*`, `up`, `down`, `flutter:*`, … |
+
+## `checks`
+
+A list of `commands` keys. phase-runner runs them once per phase, in this order, before the review and the merge.
+
+```json
+"checks": ["format", "lint", "typecheck", "test"]
+```
+
+Rules for each key `K`:
+- A non-zero exit code, or a failure marker in the output (`N failed`, `N errors`), stops the phase.
+- If the check changes files (a formatter), phase-runner commits them as `style(phase-N): K`. This is not a failure.
+- If `commands.K:bg` and `commands.K:bg:wait` exist, the check runs in the background (for a long test suite in Docker).
+- `{FILES}` in the command → the files changed in the phase. `{FILES:*.php}` → only the changed
+  files that match the glob. `{BASE}` → the feature branch.
+  Use them to analyse only changed files (for example PHPStan with legacy errors).
+  If the file list is empty, the check is skipped.
+  ⚠ The paths start at the repo root. If the tool runs in another folder (a monorepo app
+  in Docker), the paths do not match. Use a project script that takes `{BASE}` instead.
+
+| Value | Meaning |
+|---|---|
+| key absent | Legacy list: `pint`, `phpstan` (changed PHP files only), `test` — only the keys that exist in `commands`. |
+| `[]` | No checks. |
+| list | Run exactly these keys. |
+
+Put fast checks first (formatter, linter), the test suite last.
+
+Note: a formatter in `checks` must **fix** files, not only check them
+(`dart format lib test`, `ruff format .`, `pint`), so its changes get committed.
+A check-only formatter (`ruff format --check`) fails the phase on any difference.
 
 ## `review`
 
@@ -49,6 +81,19 @@ End commands with `2>&1`, so the output includes errors.
 | `mode` | `"off"` \| `"report"` \| `"block"` | `"report"` | `off`: no review. `report`: write reports, never stop. `block`: STOP on CRITICAL findings. |
 | `rules` | string[] | `[]` | Stack-rule skills for `workflow-kit:review`. |
 | `providers` | object[] | `workflow-kit:review` only | Review skills that phase-runner runs. `[]` = no review. |
+| `autofix` | bool | `false` | `block` mode only. `true`: on CRITICAL findings, an agent fixes them without a question, then CHECKS and REVIEW run again. `false`: phase-runner asks first. |
+| `max_fix_rounds` | int | `2` | The maximum number of fix rounds per phase. After that, phase-runner asks: stop or merge anyway. |
+
+### What happens on a CRITICAL finding
+
+| `mode` | Result |
+|---|---|
+| `report` | The phase merges. The finding is only in the report. |
+| `block` | STOP. Choice: fix automatically (up to `max_fix_rounds`), stop and fix by hand, or merge anyway. |
+
+After "stop and fix by hand": commit the fix on the phase branch, check out the feature branch,
+and run `/phase-runner N` again. The run finds the phase branch, skips the tasks that are already
+on it, and runs CHECKS and REVIEW again.
 
 ### `review.rules` values
 

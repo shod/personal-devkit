@@ -5,7 +5,8 @@ description: >-
   task-work, task-git and review read (branch prefixes, commands, review settings).
   Detects the stack (Laravel, Flutter, Python, Node, monorepo), proposes a config from the
   examples, shows it, and writes it only after a yes. In an existing config it only adds
-  missing keys and never changes existing ones. Use when the user says "setup project",
+  missing keys and never changes existing ones. Also sets the `checks` list that phase
+  CHECKS runs. Use when the user says "setup project",
   "create .claude-project.json", "configure review", or when phase-runner reports that
   the config is missing. Use --check to report only.
 argument-hint: "[--check] [--review-only]"
@@ -72,12 +73,21 @@ app in `paths` (`backend`, `mobile`, …).
 1. Start from the matching example in `examples/`.
 2. Replace each command with the real command for this repo (paths, compose file, service name).
 3. Set `project` to the repo folder name.
-4. Add the `review` section:
+4. Add the `checks` list: the `commands` keys that phase CHECKS runs, in order.
+   - Order: formatter (one that fixes files) → linter / analyzer → type check → test suite.
+   - Use only keys that exist in the proposed `commands`.
+   - Laravel: `["pint", "phpstan:changed", "test"]`. With 500+ legacy PHPStan errors, use a
+     command with `{FILES:*.php}` or a script with `{BASE}`, not the full `phpstan`.
+   - Flutter: `["flutter:format", "flutter:analyze", "test"]`.
+   - Python (uv): `["format", "lint", "typecheck", "test"]`.
+   - Monorepo: the checks of every app.
+5. Add the `review` section:
    - `mode`: `report`.
    - `rules`: the review rules of every detected stack (table above).
    - `providers`: leave the key out. Then phase-runner uses `workflow-kit:review`.
-5. If the config exists, the proposal is only the **missing keys**.
-6. With `--review-only`, the proposal is only the `review` section.
+6. If the config exists, the proposal is only the **missing keys**.
+   An existing config without `checks` gets a proposed `checks` list built from its own `commands` keys.
+7. With `--review-only`, the proposal is only the `review` section.
 
 ## Step 4: Show and confirm
 
@@ -85,7 +95,8 @@ app in `paths` (`backend`, `mobile`, …).
    ```
    Stack:      Laravel (Sail, ./apps/api) + Flutter (./apps/mobile)
    File:       .claude-project.json  (new | update: N keys to add)
-   Add:        paths.phase_branch_prefix, commands.test:bg, review
+   Add:        paths.phase_branch_prefix, commands.test:bg, checks, review
+   Checks:     pint → phpstan:changed → test
    Not found:  commands.phpstan (no phpstan.neon)
    ```
 2. Print the full JSON to add.

@@ -2,12 +2,17 @@
   "_comment": "Flutter app in apps/mobile. Commands run on the host.",
   "project": "my-flutter-app",
   "commands": {
-    "flutter:pub:get":     "cd apps/mobile && flutter pub get 2>&1",
-    "flutter:analyze":     "cd apps/mobile && flutter analyze 2>&1",
-    "flutter:format":      "cd apps/mobile && dart format lib test 2>&1",
-    "test":                "cd apps/mobile && flutter test 2>&1",
-    "test:filter":         "cd apps/mobile && flutter test --plain-name \"{FILTER}\" 2>&1"
+    "flutter:pub:get": "cd apps/mobile && flutter pub get 2>&1",
+    "flutter:analyze": "cd apps/mobile && flutter analyze --no-fatal-infos 2>&1",
+    "flutter:format": "cd apps/mobile && dart format lib test 2>&1",
+    "test": "cd apps/mobile && flutter test 2>&1",
+    "test:filter": "cd apps/mobile && flutter test --plain-name \"{FILTER}\" 2>&1"
   },
+  "checks": [
+    "flutter:format",
+    "flutter:analyze",
+    "test"
+  ],
   "paths": {
     "mobile": "./apps/mobile",
     "tasks_md": "specs/*/tasks.md",
@@ -16,6 +21,8 @@
   },
   "review": {
     "mode": "report",
-    "rules": ["flutter-kit:flutter-best-practices"]
+    "rules": [
+      "flutter-kit:flutter-best-practices"
+    ]
   }
 }

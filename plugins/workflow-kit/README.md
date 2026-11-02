@@ -28,6 +28,9 @@ Framework-agnostic dev workflow skills + workflow agents.
 `phase-runner` reads a **`.claude-project.json`** at the consuming repo root for:
 - `paths.phase_branch_prefix`, `paths.task_branch_prefix`
 - `commands.*` (Docker/tests/lint/artisan — so agents never hand-write them)
+- `checks` (recommended) — the `commands` keys that phase CHECKS runs, in order, for any
+  stack: `"checks": ["format", "lint", "typecheck", "test"]`. Without it, the legacy list
+  `pint` → `phpstan` (changed files) → `test` is used (only keys that exist).
 - `review` (optional) — the phase review step. Without it, phase-runner runs
   `workflow-kit:review` in `report` mode:
   ```json
@@ -41,6 +44,8 @@ Framework-agnostic dev workflow skills + workflow agents.
   }
   ```
   - `mode`: `off` | `report` (never stops) | `block` (STOP on CRITICAL from `can_block` providers).
+  - `autofix` / `max_fix_rounds` (`block` only): an agent fixes CRITICAL findings, then CHECKS
+    and REVIEW run again, up to `max_fix_rounds` (default 2). Without `autofix`, phase-runner asks.
   - `rules`: stack-rule skills that `workflow-kit:review` loads (for example `laravel-kit:laravel-review`).
   - `providers`: review skills to run, each in its own subagent. Reports go to
     `specs/<feature>/reviews/phase-<N>-<skill>.md` and into the phase commit.
