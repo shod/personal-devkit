@@ -4,6 +4,14 @@ All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this plugin adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1]
+
+### Fixed
+
+- **Preset `shod-speckit` 0.1.1** — analyze pass G now states how to treat `N/A — no <file>`
+  in `## Traceability`: valid when that file does not exist (ID and coverage checks are skipped
+  for that line); **MEDIUM** finding when the file exists.
+
 ## [0.1.0]
 
 ### Added

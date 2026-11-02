@@ -3,7 +3,7 @@ schema_version: "1.0"
 preset:
   id: "shod-speckit"
   name: "shod-speckit: intent traceability"
-  version: "0.1.0"
+  version: "0.1.1"
   description: "Adds an intent/PRD Traceability section to every spec and a traceability pass to /speckit.analyze."
   author: "Oleg Shmyk"
   repository: "https://github.com/shod/personal-devkit"

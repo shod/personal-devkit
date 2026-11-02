@@ -10,6 +10,8 @@ It is read-only, like the rest of the analysis.
 2. **Read the `## Traceability` section of spec.md.**
    - Section missing → finding, severity **MEDIUM**, category `Traceability`, "spec has no Traceability section".
    - Placeholders still present (text in `[...]` brackets) → **MEDIUM**, "Traceability not filled".
+   - A line `N/A — no <file>` is valid when that file does not exist. Skip steps 3–4 for that line.
+     If the file exists → **MEDIUM**, "Traceability marked N/A but <file> exists".
 3. **Resolve every referenced ID** (G-x, SC-x, US-x, FR-x, NFR-x, §n) against the intent/PRD files.
    An ID that does not exist there → **HIGH**, "dangling reference".
    Load only the sections you need (progressive disclosure), not whole documents.
