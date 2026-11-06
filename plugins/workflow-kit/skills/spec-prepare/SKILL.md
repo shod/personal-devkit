@@ -148,6 +148,12 @@ Tell the user the reason and the command to resume (Step 5).
 1. Make sure that `{FEATURE_DIR}/tasks.md` exists.
 2. Make sure that it has at least one task line (`- [ ] T001` style).
    If there are no tasks — **STOP**.
+3. Count the phases. A phase is a heading line in `tasks.md` that starts with
+   `## Phase <N>` (for example `## Phase 3: User Story 1 (Priority: P1)`).
+   For each phase, save the number, the title and the number of task lines under it.
+   Save the total as `PHASE_COUNT`.
+4. If `PHASE_COUNT` is 0 — do not stop. Show "phases: not found" in the summary as a warning,
+   because `phase-runner` needs `## Phase <N>` headings.
 
 **After analyze:**
 1. Read the severity table of the analysis report.
@@ -168,13 +174,24 @@ Show a short summary:
 
 **Feature folder:** `{FEATURE_DIR}`
 **Stages:** specify ✅ · clarify ⏭ · plan ✅ · tasks ✅ · analyze ✅   (⏭ skipped, ⛔ stopped)
-**Tasks:** <N> tasks in <M> phases
+**Phases:** <PHASE_COUNT>
+**Tasks:** <N> tasks
+
+| Phase | Title | Tasks |
+|-------|-------|-------|
+| 1     | Setup | 4     |
+| 2     | Foundational | 6 |
+| …     | …     | …     |
 **Analyze:** <C> critical · <H> high · <M> medium · <L> low
 
 **Warnings:** <HIGH findings, or "none">
 
-**Next step:** `/phase-runner 1`   (or the resume command, if the run stopped)
+**Next step:** `/phase-runner 1`, or all phases: `/phase-runner 1-<PHASE_COUNT>`
+(or the resume command, if the run stopped)
 ```
+
+Show the phases block only if `tasks.md` exists. If the run stopped before tasks,
+leave it out.
 
 If the run stopped, give the exact resume command:
 `/spec-prepare --from=<stage>`.
@@ -191,4 +208,4 @@ If the run stopped, give the exact resume command:
 
 - [ ] Each stage in the range ran, or the run stopped at a gate with a clear reason.
 - [ ] Each artifact in the range exists in `{FEATURE_DIR}`.
-- [ ] The summary shows the stage status, the analyze counts and the next command.
+- [ ] The summary shows the stage status, the number of phases, the analyze counts and the next command.
