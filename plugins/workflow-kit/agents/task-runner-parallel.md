@@ -8,7 +8,7 @@ description: >-
   that flag phase-runner runs every task sequentially and never calls it.
 skills:
   - task-runner
-model: inherit
+model: sonnet
 memory: project
 ---
 

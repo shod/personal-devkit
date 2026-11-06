@@ -7,6 +7,7 @@ metadata:
   author: skill-generator
   version: "2.0"
   category: developer-tools
+model: opus
 ---
 
 # Skill Generator

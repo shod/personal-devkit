@@ -1,127 +1,114 @@
 ---
 name: review
 description: >-
-  AI code review for speckit tasks. Checks Laravel best practices, security (OWASP),
-  performance, and architecture. Use /review for git diff review
-  or /review {task-id} for a specific task (e.g., T012, T045, etc.).
-  For formatting and static analysis use /pint and /larastan separately.
-disable-model-invocation: true
-argument-hint: "[task-id]"
-allowed-tools: Bash(git *) Read Grep Glob mcp__laravel-boost__application-info mcp__laravel-boost__search-docs
+  Framework-agnostic AI code review for spec-kit work. Checks spec compliance,
+  correctness, security, performance, test quality and maintainability, plus stack rules
+  from `.claude-project.json` → `review.rules` (for example `laravel-kit:laravel-review`).
+  Use /review for uncommitted changes, /review T012 for one task, or
+  /review --base=<branch> for a branch or a whole phase. phase-runner calls it once per
+  phase. Reports only, never changes code.
+argument-hint: "[task-id] [--base=<ref>] [--phase=<N>] [--out=<path>] [--auto]"
+allowed-tools: Bash(git *) Read Grep Glob Write Skill
 metadata:
-  author: speckit
-  version: "2.0"
+  author: olegs
+  version: "3.0"
   category: quality
+model: opus
 ---
 
-# Code Review Skill
+# Code Review
 
-Conducts AI code review of code generated/changed within speckit tasks.
-Checks 4 categories: Laravel best practices, security, performance, architecture.
+This skill reviews code that a spec-kit task or phase changed.
+It writes a report. It **never changes code**.
 
-**Does NOT fix code** — only reports issues with recommendations.
+The skill does not depend on a framework.
+Stack rules come from other skills, listed in `.claude-project.json` → `review.rules`.
 
-> **Formatting and static analysis** are extracted to separate skills:
-> `/pint` — Laravel Pint, `/larastan` — LaraStan (PHPStan).
+## Arguments
 
-## Modes
+| Argument | Meaning |
+|---|---|
+| (none) | Review the uncommitted changes. |
+| `T012` | Review the files of task T012. |
+| `--base=<ref>` | Review `git diff <ref>...HEAD`. phase-runner uses this mode. |
+| `--phase=<N>` | Phase number. Used only for the report title and file name. |
+| `--out=<path>` | Write the report to this file. Without it, print the report only. |
+| `--auto` | Do not ask questions. Use defaults and continue. |
 
-### Mode 1: Git Diff (no arguments)
+## Step 1: Find the scope
 
-If `$ARGUMENTS` is empty — review all uncommitted changes:
+1. If `--base` is present, run `git rev-parse --verify <ref>`.
+   If it fails, **STOP** with `REVIEW_ERROR: bad base ref <ref>`.
+2. Get the changed files:
+   - With `--base`: `git diff --name-only <ref>...HEAD`.
+   - With a task ID: find the task in `specs/*/tasks.md`. Use the file paths in the task text.
+     If the task has no paths, use the files of the commits whose message contains the task ID.
+   - With no arguments: `git diff --name-only` and `git diff --cached --name-only`.
+3. Remove from the list: lock files, generated files, binary files, and files in `vendor/`,
+   `node_modules/`, `build/`, `dist/`.
+4. If the list is empty, **STOP** with `REVIEW_ERROR: empty diff`.
 
-1. Get list of changed files: `git diff --name-only` and `git diff --cached --name-only`
-2. Filter to PHP files only (`*.php`)
-3. Review each file
+## Step 2: Load the context
 
-### Mode 2: Task ID (with argument)
+1. Find the feature folder.
+   Read `.specify/feature.json` first. If it does not exist, use the folder of the `tasks.md`
+   that holds the task, or the folder that matches the branch name.
+2. Read `spec.md`, `plan.md` and `tasks.md` from the feature folder, if they exist.
+   For a phase review, note the tasks of that phase.
+3. Read `.specify/memory/constitution.md`, if it exists.
+4. Read `.claude-project.json` → `review.rules`, if it exists.
+   For each entry, call the **Skill tool** with that skill name to load its rules.
+   If a rules skill is not installed, write `Rules not loaded: <name>` in the report and continue.
+5. Read the project standards files, if they exist: `CLAUDE.md`, `AGENTS.md`,
+   `CODING_STANDARDS.md`, `CONTRIBUTING.md`.
 
-If `$ARGUMENTS` contains a task ID (e.g., `T012`):
+## Step 3: Review
 
-1. Find the task in `specs/*/tasks.md` by ID
-2. From the task description determine the affected files (paths in description)
-3. If files are not specified explicitly — use `git diff --name-only` for latest changes
-4. Review those files
+1. Read the full diff: `git diff <ref>...HEAD` (or the task commits, or the working tree).
+2. For each changed file, read the full file when the diff alone is not enough.
+3. Apply [checklist.md](references/checklist.md).
+4. Apply the rules from the loaded rules skills.
+5. Apply the constitution. A violation of a NON-NEGOTIABLE rule is always **CRITICAL**.
+6. For each finding, record: category, severity, file and line, problem, recommendation.
 
-## Review algorithm
+Rules for findings:
+- Report a finding only when you can point to a file and a line.
+- Do not report what a linter or formatter already checks (for example Pint or PHPStan).
+- Do not report style preferences that the project does not document.
+- If you are not sure, use severity **INFO** and write "possible" in the problem text.
 
-### Step 0: Check Laravel Boost
+## Step 4: Write the report
 
-1. Call `application-info` to verify Laravel Boost MCP server availability
-2. If Laravel Boost MCP server is unavailable or returns error:
-   - **STOP review immediately**
-   - Output message: "Laravel Boost MCP server is unavailable. Review is not possible without access to current documentation. Ensure Laravel Boost is installed (`composer require --dev laravel/boost`) and the MCP server is running."
-   - **DO NOT continue** — review without Laravel Boost may produce incorrect recommendations
-3. If Laravel Boost is available — proceed to Step 1
-
-### Step 1: Scope determination and context loading
-
-1. Find FEATURE_DIR — directory `specs/FS-*` in the project
-2. Determine mode from `$ARGUMENTS`
-3. Collect list of PHP files for review
-4. **Load project constitution** — find file `.specify/memory/constitution.md`:
-   - If file exists — read and extract project requirements (strict_types, folder structure, API format, performance targets, auth strategy, testing standards, etc.)
-   - These requirements are checked **in addition to** universal checklists
-   - Violations of NON-NEGOTIABLE constitution requirements always have severity **CRITICAL**
-   - If file not found — review works only from universal checklists in [checklists.md](references/checklists.md)
-5. Show user the list of files that will be checked
-
-### Step 2: AI code analysis
-
-For each PHP file in the list:
-
-1. Read the full file contents
-2. Check against **universal checklists** from [checklists.md](references/checklists.md)
-3. Check against **project requirements from the constitution** (if loaded in Step 1)
-4. Record found issues with severity level
-
-Use `search-docs` when needed to clarify Laravel 12 / PHP 8.4 best practices.
-
-### Step 3: Output results
-
-Output the AI analysis result in chat in the format:
+1. Fill in [report-template.md](templates/report-template.md).
+2. If `--out` is present, write the report to that path with the Write tool.
+   This is the only file that the skill may write.
+3. Print a short summary in chat: the counts and the list of CRITICAL findings.
+4. Print this line as the **last line** of the output, exactly in this format:
 
 ```
-═══ Code Review: {mode} ═══
-
-Files checked: {N}
-
---- {category} ---
-
-[SEVERITY] {issue description}
-  File: path/to/file.php:{line}
-  Recommendation: {what to do}
-
---- Summary ---
-
-CRITICAL: {N} | WARNING: {N} | INFO: {N}
-{brief MUST FIX list if any}
+REVIEW_RESULT: critical=<N> warning=<N> info=<N> report=<path or ->
 ```
+
+phase-runner reads this line. Do not change its format.
 
 ## Severity levels
 
-| Level | Description | Action |
-|-------|-------------|--------|
-| CRITICAL | Bug, vulnerability, data loss | MUST fix |
-| WARNING | Best practice violation, potential issue | Recommended to fix |
-| INFO | Style improvement, minor refactoring | At discretion |
+| Level | Meaning | Action |
+|-------|---------|--------|
+| CRITICAL | A bug, a security hole, data loss, or a feature that does not do what the spec says | Must fix before merge |
+| WARNING | A probable problem or a clear violation of project rules | Fix soon |
+| INFO | An improvement or a possible problem | Optional |
 
-## Important rules
+## Rules
 
-### No code modification (NON-NEGOTIABLE)
+### No code changes (NON-NEGOTIABLE)
 
-- **PROHIBITED** to modify, edit, or fix any project files
-- **PROHIBITED** to use Edit/Write on any project files
-- If something needs fixing — describe the issue and recommendation in chat
+- Do **not** edit, fix or format any project file.
+- Do **not** run commands that change files or git state. Only read commands are allowed:
+  `git diff`, `git log`, `git show`, `git rev-parse`.
+- The only file that the skill writes is the report file from `--out`.
 
-### General rules
+### General
 
-- Output in **English**
-- Check compliance with **PHP 8.4** and **Laravel 12** standards
-- Follow rules from CLAUDE.md and Laravel Boost guidelines
-- Config files (.env, docker-compose, pint.json, phpstan.neon) — check for correctness, but without security/performance analysis
-
-## Additional resources
-
-- Detailed checklists for all categories: [checklists.md](references/checklists.md)
-- Report template (used by `review-agent` sub-agent): [report-template.md](templates/report-template.md)
+- Write the report in **English**.
+- With `--auto`, do not ask questions. If something is missing, write it in the report and continue.

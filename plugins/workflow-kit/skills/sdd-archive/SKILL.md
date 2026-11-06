@@ -12,6 +12,7 @@ metadata:
   author: Oleg Shmyk
   version: "1.0"
   category: spec-management
+model: haiku
 ---
 
 # SDD Archive — Archiving a Specification

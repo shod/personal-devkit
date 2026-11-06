@@ -1,0 +1,31 @@
+{
+  "_comment": "Python project managed by uv (ruff, mypy, pytest, alembic).",
+  "project": "my-python-app",
+  "commands": {
+    "format": "uv run --locked ruff format . 2>&1",
+    "format:check": "uv run --locked ruff format --check . 2>&1",
+    "lint": "uv run --locked ruff check . 2>&1",
+    "typecheck": "uv run --locked mypy src 2>&1",
+    "test": "uv run --locked pytest 2>&1",
+    "test:filter": "uv run --locked pytest -k \"{FILTER}\" 2>&1",
+    "migrate": "uv run --locked alembic upgrade head 2>&1"
+  },
+  "checks": [
+    "format",
+    "lint",
+    "typecheck",
+    "test"
+  ],
+  "paths": {
+    "backend": ".",
+    "tasks_md": "specs/*/tasks.md",
+    "task_branch_prefix": "task/",
+    "phase_branch_prefix": "phase/"
+  },
+  "review": {
+    "mode": "report",
+    "rules": [
+      "python-kit:fastapi-best-practices"
+    ]
+  }
+}

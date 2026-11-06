@@ -16,18 +16,65 @@ this plugin adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
-- **`spec-prepare` skill: the Spec Kit preparation chain in one command.** Runs
-  `speckit-specify` → (optional `speckit-clarify`) → `speckit-plan` → `speckit-tasks` →
-  `speckit-analyze` in sequence.
-  `tasks` runs before `analyze`, because `analyze` needs `tasks.md`.
-  - A gate after each stage: the artifact must exist; open `[NEEDS CLARIFICATION]`
-    markers or CRITICAL analyze findings stop the run.
-  - `speckit-clarify` runs automatically when `spec.md` has `[NEEDS CLARIFICATION]`
-    markers (after specify, or before plan with `--from=plan`). `--clarify` runs it always.
-    Markers left after clarify stop the run.
-  - `--from=<stage>` / `--to=<stage>` run a part of the chain; `--yes` skips the pause
-    between stages.
-  - Never implements, never commits, never edits the artifacts itself.
+- **`project-setup` skill.** Creates or updates `.claude-project.json`. Detects the stack
+  (Laravel, Flutter, Python, Node, monorepo), proposes a config from `examples/`, and writes
+  it only after a yes. In an existing config it adds only missing keys. `--check` reports
+  only; `--review-only` adds only the `review` section. `references/schema.md` documents
+  every key.
+- **`checks` in `.claude-project.json`: framework-agnostic phase CHECKS.** A list of
+  `commands` keys that phase CHECKS runs in order, for example
+  `["format", "lint", "typecheck", "test"]` or `["flutter:format", "flutter:analyze", "test"]`.
+  Any key with a `{key}:bg` + `{key}:bg:wait` pair runs detached in the container (before:
+  only `test`). A check that changes files gets a `style(phase-N): {key}` commit.
+  New placeholders `{FILES}`, `{FILES:<glob>}` and `{BASE}`. Without `checks`, the old list
+  `pint` → `phpstan` (changed PHP files) → `test` is used, so existing Laravel projects work
+  as before. An empty check list now STOPs and asks, instead of passing in silence
+  (Flutter and Python projects had no real CHECKS before).
+- **phase-runner: resume** (Step 5.57). When the phase branch already exists (a run stopped
+  on CHECKS, REVIEW or an error), every unmarked task is checked with `verify-task`. Tasks that
+  are already on the phase branch are skipped and marked `[x]` with the others. Before, a
+  re-run executed all tasks of the phase again. A run that starts on a phase branch now STOPs
+  with instructions.
+- **phase-runner: review fix loop** (Step 7.5, item 1.6). In `block` mode, CRITICAL findings can
+  be fixed by an agent (`fix(phase-N): review findings (round R)`), then CHECKS and REVIEW run
+  again. `review.autofix` skips the question; `review.max_fix_rounds` (default 2) limits the loop.
+- **phase-runner: config check at start** (Step 1.2). Missing file → offers `project-setup`.
+  Missing `paths.phase_branch_prefix` → STOP. Missing `review` or `commands.test` → a
+  one-line notice, the run continues.
+
+- **phase-runner: phase REVIEW step** (Step 7.5, item 1.5). After CHECKS pass, phase-runner
+  runs the review providers from `.claude-project.json` → `review.providers`, each in its own
+  subagent, for `git diff {feature branch}...{phase branch}`. Reports go to
+  `specs/<feature>/reviews/phase-<N>-<skill>.md` and into the phase commit.
+  `review.mode`: `off`, `report` (default, never stops) or `block` (STOP on CRITICAL findings
+  from providers with `can_block: true`). External review skills (for example
+  `mattpocock-skills:code-review`) can be added as providers.
+
+### Changed
+
+- **`review` skill is now framework-agnostic** (version 3.0). It checks spec compliance,
+  correctness, security, performance, test quality and maintainability. Stack rules come
+  from the skills in `review.rules` (for example `laravel-kit:laravel-review`). New arguments:
+  `--base`, `--phase`, `--out`, `--auto`. The report ends with a machine-readable
+  `REVIEW_RESULT:` line. Removed `disable-model-invocation`, so agents can call it.
+  The Laravel checklist moved to `laravel-kit:laravel-review`.
+
+- **Explicit `model` for every skill.** Each `SKILL.md` now sets `model` in its frontmatter:
+  - `opus`: `phase-runner` (was `sonnet`), `review`, `skill-generator`.
+  - `sonnet`: `task-git`, `squash-commits`, `git-cleanup`, `graphify`, `graphify-spec-context`,
+    `hand-off` (plus `task-work` and `task-runner-parallel`, unchanged).
+  - `haiku`: `sh-speckit-archive`, `sdd-archive`, `todo-plans` (plus `time-log`, unchanged).
+  - `inherit`: `analytic-bft` (uses the model of the current session).
+- **`task-runner` agent: corrected the `review` step.** With `AUTO_MODE=false` the agent
+  offers `review {TASK_ID}` and calls it on yes. With `AUTO_MODE=true` it skips review,
+  because phase-runner reviews the whole phase.
+
+## [0.8.1]
+
+### Changed
+
+- **`task-runner-parallel` agent** now runs on `model: sonnet` instead of `model: inherit`,
+  the same as the `task-runner` agent.
 
 ## [0.8.0]
 

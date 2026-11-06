@@ -1,0 +1,50 @@
+{
+  "_comment": "Monorepo: Laravel API in apps/api (Docker), Flutter app in apps/mobile (host). {FILES} paths start at the repo root (apps/api/...), but PHPStan runs inside the container from apps/api, so phpstan:changed uses a project script that takes {BASE} and strips the prefix.",
+  "project": "my-monorepo",
+  "docker": {
+    "compose_file": "./apps/api/docker-compose.yml",
+    "service": "laravel.test"
+  },
+  "commands": {
+    "pint": "docker compose -f \"./apps/api/docker-compose.yml\" exec laravel.test ./vendor/bin/pint --format=json 2>&1",
+    "phpstan": "docker compose -f \"./apps/api/docker-compose.yml\" exec laravel.test ./vendor/bin/phpstan analyse --memory-limit=512M 2>&1",
+    "phpstan:changed": "bash apps/api/bin/phpstan-changed.sh {BASE} 2>&1",
+    "test": "docker compose -f \"./apps/api/docker-compose.yml\" exec laravel.test php artisan test --compact 2>&1",
+    "test:filter": "docker compose -f \"./apps/api/docker-compose.yml\" exec laravel.test php artisan test --compact --filter={FILTER} 2>&1",
+    "migrate": "docker compose -f \"./apps/api/docker-compose.yml\" exec laravel.test php artisan migrate --force 2>&1",
+    "flutter:analyze": "cd apps/mobile && flutter analyze 2>&1",
+    "flutter:test": "cd apps/mobile && flutter test 2>&1"
+  },
+  "checks": [
+    "pint",
+    "phpstan:changed",
+    "test",
+    "flutter:analyze",
+    "flutter:test"
+  ],
+  "paths": {
+    "backend": "./apps/api",
+    "mobile": "./apps/mobile",
+    "tasks_md": "specs/*/tasks.md",
+    "task_branch_prefix": "task/",
+    "phase_branch_prefix": "phase/"
+  },
+  "review": {
+    "mode": "block",
+    "rules": [
+      "laravel-kit:laravel-review",
+      "flutter-kit:flutter-best-practices"
+    ],
+    "providers": [
+      {
+        "skill": "workflow-kit:review",
+        "args": "--base={base} --phase={N} --out={out} --auto",
+        "can_block": true
+      },
+      {
+        "skill": "mattpocock-skills:code-review",
+        "args": "{base} — spec: {spec_path}"
+      }
+    ]
+  }
+}

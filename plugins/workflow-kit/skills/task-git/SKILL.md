@@ -12,6 +12,7 @@ metadata:
   author: speckit
   version: "1.4"
   category: git-workflow
+model: sonnet
 ---
 
 # Task Git Skill
@@ -268,7 +269,7 @@ Show full report:
 ## Phase scope (`--scope=phase`)
 
 Branch-per-Phase mode. ONE branch per phase holds **every** task of that phase (one commit
-per task while the phase runs); **Pint + PHPStan + Tests run ONCE per phase** (CHECKS
+per task while the phase runs); **the project checks run ONCE per phase** (CHECKS
 action). Then `phase-runner` squashes the phase branch into one commit (`squash-commits
 --scope=phase`), and MERGE fast-forwards the feature branch to it (`--ff-only`). The result
 is **one commit per phase** on the feature branch. Driven exclusively by
@@ -325,59 +326,87 @@ label stays the TASK_ID** so per-task traceability survives on the phase branch.
 
 > Do **not** merge into the feature branch here — that happens once at MERGE.
 
-### Phase action CHECKS — run Pint + PHPStan + Tests once
+### Phase action CHECKS — run the project checks once
 
 **Condition**: on PHASE_BRANCH, all phase tasks committed, working tree clean.
 
-Run all three quality gates **once** for the whole phase, in order. Use the commands from
-`.claude-project.json` `commands.*` — **do not** hand-write `docker compose`.
+Run the quality gates **once** for the whole phase, in order. Use the commands from
+`.claude-project.json` `commands.*` — **do not** hand-write `docker compose` or tool commands.
 
-> **The pass/fail verdict for every gate below MUST be derived by directly parsing the raw
-> stdout/stderr of the command you just ran** — grep/match the tool's own failure markers
-> (`FAILED`, `✗`, non-zero exit code, PHPStan's error count, PHPUnit's "N failed" summary
-> line) in the actual captured output. Do not infer PASS from "the command didn't crash" or
-> from your own paraphrase of what it printed — read the numbers/markers in the output
-> itself. This is the one place in the whole skill chain where CHECKS is authoritative, so
-> it must not degrade into a summarized impression of the output.
+> **The pass/fail verdict for every check below MUST be derived by directly parsing the raw
+> stdout/stderr of the command you just ran** — the exit code plus the tool's own failure
+> markers (`FAILED`, `✗`, `error`, an error count, a "N failed" summary line) in the actual
+> captured output. Do not infer PASS from "the command didn't crash" or from your own
+> paraphrase of what it printed — read the numbers/markers in the output itself. This is
+> the one place in the whole skill chain where CHECKS is authoritative, so it must not
+> degrade into a summarized impression of the output.
 
-1. **Pint** — run `commands.pint`.
-   - If it modified files: `git add -A` → `git commit -m "style(phase-{PHASE_NUM}): pint"`.
-   - On **unfixable** violations (Pint reports errors it cannot auto-fix) → **STOP** and report; do not proceed to PHPStan/Tests/MERGE.
-2. **PHPStan (changed files only)** — get the changed PHP files:
-   `git diff {FEATURE_BRANCH}...HEAD --name-only -- "*.php"`, pass them to `commands.phpstan` (as positional paths or `--paths=`). This honors the repo's 500+ legacy-error rule (only new/changed files are analysed; never touch legacy errors).
-   - On errors in changed files → **STOP** and report.
-3. **Tests (full suite)** — pick the command by what the project defines:
-   - **If `commands.test:bg` AND `commands.test:bg:wait` exist — use them (preferred):**
-     1. Make sure no earlier suite run is still alive in the container (an orphan would
-        overwrite the same log mid-run): list processes with `ps -eo pid,etime,args` via the
-        project's exec command. If one is left, stop it with `kill <PID>`. **Never**
-        `pkill -f "<pattern>"` inside `sh -c '...'` when the pattern also appears in that
-        command line — it matches and kills its own shell (exit 143) and leaves the real
-        process running.
-     2. Run `commands.test:bg`. It returns immediately: the suite runs **detached inside the
-        container** and writes a plain-text log ending with an `EXIT=<code>` line.
-     3. Run `commands.test:bg:wait` with `run_in_background: true` and wait for its
-        completion notification (do not poll, do not sleep in the foreground). Its output is
-        the raw summary (`Tests:` / `FAILED` / `EXIT=` lines) read from the log.
-     4. Verdict comes from that raw output: `EXIT=` must be `0` **and** the `Tests:` line must
-        have no failed count. A missing `Tests:` line (crash, OOM, killed run) is a **failure**,
-        not a pass. If `FAILED` lines are listed, read the failure details from the log file
-        before reporting.
-   - **Otherwise** run `commands.test` (legacy, foreground).
-   - **Why detached:** a full suite run in the foreground (or as a host-side background
-     command) streams all output through the host `docker compose exec` client. On a long
-     suite that client has been killed "because the system is running low on memory": the
-     output was lost and the PHP process kept running orphaned in the container. The
-     detached run + log file finished reliably on every phase.
-   - On any failing test → **STOP** and report. Do **not** proceed to MERGE.
-   - Read the test runner's own summary line (e.g. `Tests: N failed, M passed`) from the
-     captured output; a non-zero "failed" count is a failure regardless of exit code or any
-     surrounding narration.
+#### C1. Build the check list
+
+1. **`checks` exists in `.claude-project.json`** → use it. It is a list of `commands.*` keys,
+   run in this order. Example: `"checks": ["format", "lint", "typecheck", "test"]`.
+   - If a key in `checks` is not in `commands` and has no `{key}:bg` + `{key}:bg:wait` pair
+     (see C2) → **STOP**: `checks references a missing command: {key}`.
+   - `"checks": []` means "no checks". Write `Checks: none (checks = [])` and pass.
+2. **`checks` does not exist** → build the legacy list from the keys that exist, in this order:
+   1. `pint` (if `commands.pint` exists)
+   2. `phpstan` (if `commands.phpstan` exists) — run on changed PHP files only, see C3
+   3. `test` (if `commands.test` or the `commands.test:bg` + `commands.test:bg:wait` pair exists)
+3. **The list is empty** → do not pass silently. Report
+   `⚠ No checks configured: add "checks" to .claude-project.json (see /project-setup)`
+   and **STOP**. phase-runner asks the user if the phase may continue without checks.
+
+#### C2. Run each check
+
+For each key `K` in the list:
+
+1. **Placeholders.** Replace them in the command before you run it:
+   - `{BASE}` → `FEATURE_BRANCH`.
+   - `{FILES}` → the files changed in the phase that still exist:
+     `git diff {FEATURE_BRANCH}...HEAD --name-only --diff-filter=d`, space-separated.
+   - `{FILES:<glob>}` → the same list, filtered by the glob. Example: `{FILES:*.php}` →
+     `git diff {FEATURE_BRANCH}...HEAD --name-only --diff-filter=d -- "*.php"`.
+   - If a `{FILES…}` list is empty, skip this check and write `{K}: skipped (no changed files)`.
+2. **Background mode.** If `commands.{K}:bg` **and** `commands.{K}:bg:wait` exist, use them
+   instead of `commands.{K}`:
+   1. Make sure no earlier run is still alive in the container (an orphan would overwrite
+      the same log mid-run): list processes with `ps -eo pid,etime,args` via the project's
+      exec command. If one is left, stop it with `kill <PID>`. **Never** `pkill -f "<pattern>"`
+      inside `sh -c '...'` when the pattern also appears in that command line — it matches
+      and kills its own shell (exit 143) and leaves the real process running.
+   2. Run `commands.{K}:bg`. It returns immediately: the command runs **detached inside the
+      container** and writes a plain-text log ending with an `EXIT=<code>` line.
+   3. Run `commands.{K}:bg:wait` with `run_in_background: true` and wait for its completion
+      notification (do not poll, do not sleep in the foreground). Its output is the raw
+      summary read from the log.
+   4. Verdict: `EXIT=` must be `0`, **and** a test summary line (for example `Tests:`) must
+      have no failed count. A missing `EXIT=` line (crash, OOM, killed run) is a
+      **failure**, not a pass. If failures are listed, read the details from the log file.
+   - **Why detached:** a long run in the foreground streams all output through the host
+     `docker compose exec` client. That client has been killed "because the system is
+     running low on memory": the output was lost and the process kept running orphaned in
+     the container. The detached run + log file finished reliably on every phase.
+   - **Never run the command yourself in the foreground from the host** when
+     `commands.{K}:bg` exists — not even to "double-check".
+3. **Normal mode.** Otherwise run `commands.{K}` and capture the output and the exit code.
+4. **Verdict.** A non-zero exit code is a failure. A zero exit code with failure markers in
+   the output (`N failed`, `N errors`) is also a failure.
+5. **Auto-fix.** If the working tree changed after the check (a formatter fixed files):
+   `git add -A` → `git commit -m "style(phase-{PHASE_NUM}): {K}"`. This is not a failure.
+6. **On failure → STOP** and report the check name and the raw output.
+   Do not run the next checks. Do **not** proceed to MERGE.
+
+#### C3. Legacy `phpstan` (only when `checks` does not exist)
+
+Pass only the changed PHP files: `git diff {FEATURE_BRANCH}...HEAD --name-only --diff-filter=d -- "*.php"`,
+as positional paths or `--paths=`. This honors the 500+ legacy-error rule (only new or changed
+files are analysed; never touch legacy errors). No changed PHP files → skip it.
+With a `checks` list, put `{FILES}` in the command for the same effect.
 
 Output:
 ```
 ✓ Phase {PHASE_NUM} checks passed
-  Pint: ✓ (auto-fixed: {yes/no})   PHPStan: ✓ (changed files only)   Tests: ✓
+  {K1}: ✓ (auto-fixed)   {K2}: ✓   {K3}: ✓ (bg)   {K4}: skipped (no changed files)
 ```
 
 > On any STOP here the phase branch is left **unmerged** for inspection. Never weaken an
