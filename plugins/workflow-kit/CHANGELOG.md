@@ -4,6 +4,14 @@ All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this plugin adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1]
+
+### Changed
+
+- **`spec-prepare` shows the phases of the feature.** After the tasks stage it counts the
+  `## Phase <N>` headings in `tasks.md`. The summary shows the number of phases, a table
+  (phase, title, number of tasks) and the command for all phases: `/phase-runner 1-<N>`.
+
 ## [0.9.0]
 
 ### Added
