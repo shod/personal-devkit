@@ -16,7 +16,8 @@ Framework-agnostic dev workflow skills + workflow agents.
 - **git-cleanup** — remove merged `task/*`, `phase/*`, `worktree-*` branches and worktrees (plan first, never force)
 - **hand-off** — save a session snapshot into `specs/<feature>/handoffs/` (active feature or by name)
 - spec-kit OVERLAY (yours, not upstream): **graphify-spec-context**,
-  **sh-speckit-archive**, **sdd-archive**
+  **sh-speckit-archive**, **sdd-archive**, **spec-prepare** (runs
+  specify → (clarify) → plan → tasks → analyze in one command, with a gate after each stage)
 
 ## Agents (populated)
 - **task-runner** — full single-task lifecycle (branch → implement → commit → merge)

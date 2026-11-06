@@ -4,6 +4,23 @@ All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this plugin adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`spec-prepare` skill: the Spec Kit preparation chain in one command.** Runs
+  `speckit-specify` → (optional `speckit-clarify`) → `speckit-plan` → `speckit-tasks` →
+  `speckit-analyze` in sequence.
+  `tasks` runs before `analyze`, because `analyze` needs `tasks.md`.
+  - A gate after each stage: the artifact must exist; open `[NEEDS CLARIFICATION]`
+    markers or CRITICAL analyze findings stop the run.
+  - `speckit-clarify` runs automatically when `spec.md` has `[NEEDS CLARIFICATION]`
+    markers (after specify, or before plan with `--from=plan`). `--clarify` runs it always.
+    Markers left after clarify stop the run.
+  - `--from=<stage>` / `--to=<stage>` run a part of the chain; `--yes` skips the pause
+    between stages.
+  - Never implements, never commits, never edits the artifacts itself.
+
 ## [0.8.0]
 
 ### Added
