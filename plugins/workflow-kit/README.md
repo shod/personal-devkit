@@ -10,7 +10,8 @@ Framework-agnostic dev workflow skills + workflow agents.
 - **analytic-bft** — business-requirements analyst (FR/NFR extraction, graphify-grounded)
 - **task-work** — implement one task from tasks.md
 - **task-runner-parallel** — run [P] tasks in isolated worktrees
-- **phase-runner** — orchestrate a whole phase (parallel + sequential) ⚠ see prereq
+- **phase-runner** — orchestrate a whole phase, task by task (Opus orchestrator →
+  `task-coder` on Sonnet → `task-finisher` on Haiku) ⚠ see prereq
 - **time-log** — record task execution time
 - **todo-plans** — todo-plan management
 - **squash-commits** — squash a branch into one commit vs a base; `--scope=phase` makes one commit per phase (used by phase-runner)
@@ -22,8 +23,10 @@ Framework-agnostic dev workflow skills + workflow agents.
   specify → (clarify) → plan → tasks → analyze in one command, with a gate after each stage)
 
 ## Agents (populated)
+- **task-coder** — implement one task, leave changes uncommitted (Sonnet; used by phase-runner)
+- **task-finisher** — commit one task + time log (Haiku; used by phase-runner)
 - **task-runner** — full single-task lifecycle (branch → implement → commit → merge)
-- **task-runner-parallel** — parallel [P]-task execution across worktrees
+- **task-runner-parallel** — parallel [P]-task execution across worktrees (postponed; phase-runner does not call it)
 
 ## ⚠ Prerequisite for phase-runner (and the task-* flow)
 `phase-runner` reads a **`.claude-project.json`** at the consuming repo root for:

@@ -26,9 +26,9 @@ If `$ARGUMENTS` is empty — **STOP** and ask the user to specify the task ID:
 
 ### Step 0: Context check
 
-**BEFORE ANYTHING ELSE**: Check whether the skill is being called from an agent/orchestrator (task-runner) or directly by the user.
+**BEFORE ANYTHING ELSE**: Check whether the skill is being called from an agent/orchestrator (task-coder, task-runner) or directly by the user.
 
-- **From agent (task-runner)**: skip clean context check — the agent has already performed validation and branch creation.
+- **From agent (task-coder, task-runner)**: skip clean context check — the agent has already performed validation and branch creation.
 - **Directly by user**: Check whether this skill call is the **first message** in the conversation (excluding system messages).
   - If messages **already existed** before the call → **RECOMMEND** (do not block):
     > ⚠️ **Clean context recommended.**
@@ -104,7 +104,7 @@ Show the user the result:
 
 ### Context
 - When called directly by the user — **recommended** clean context (warning, not a block)
-- When called from agent (task-runner) — context check is **skipped**
+- When called from agent (task-coder, task-runner) — context check is **skipped**
 - Skill loads everything required via the implement.md workflow
 
 ### Webhook/Callback controllers

@@ -12,7 +12,7 @@ metadata:
   author: speckit
   version: "1.4"
   category: git-workflow
-model: sonnet
+model: haiku
 ---
 
 # Task Git Skill
@@ -286,7 +286,7 @@ is **one commit per phase** on the feature branch. Driven exclusively by
 1. Extract **PHASE_NUM** from `$ARGUMENTS` (first bare integer; e.g. `3`, `1`). If not found, and `--phase-branch=` was passed, take the number from that name (the digits right after the prefix, `phase/3-007-…` → `3`). If still not found → **STOP**: "No phase number specified (e.g. /task-git 3 --scope=phase --phase-action=CREATE)".
 2. Extract **PHASE_ACTION** from `--phase-action=` (`CREATE|COMMIT|CHECKS|MERGE`). If missing → **STOP**.
 3. Extract `--auto` → **AUTO_MODE** (default `false`).
-4. For `COMMIT`: extract the **TASK_ID** (`T\d+`) being committed — `phase-runner`/`task-runner` pass it so the commit scope stays the task ID.
+4. For `COMMIT`: extract the **TASK_ID** (`T\d+`) being committed — `task-finisher`/`task-runner` pass it so the commit scope stays the task ID.
 5. Determine **FEATURE_BRANCH** = `git branch --show-current` (the source of truth — **do not** read `feature_branch` from `.claude-project.json`, it is frequently stale). If the current branch **is** `PHASE_BRANCH` (COMMIT/CHECKS/MERGE run on it), take instead the branch it was created from: `git reflog show {PHASE_BRANCH}` → the `branch: Created from <name>` entry, or `--feature-branch=` if `phase-runner` passed it. If neither resolves → **STOP** rather than guessing.
 6. Determine **PHASE_BRANCH**:
    - If `--phase-branch=<name>` was passed → use it **verbatim**. This is the normal path: `phase-runner` resolved the name once (Step 5.5) and every phase-scope call carries it.

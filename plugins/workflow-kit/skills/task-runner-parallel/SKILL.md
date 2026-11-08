@@ -3,9 +3,9 @@ name: task-runner-parallel
 description: >-
   Parallel execution of multiple [P]-marked tasks from tasks.md.
   Accepts a list of TASK_IDs and runs each task in an isolated git worktree
-  via a separate task-runner agent. OPT-IN ONLY: from phase-runner this path is
-  taken exclusively when it was started with --parallel; invoking this skill
-  directly is itself an explicit opt-in.
+  via a separate task-runner agent. POSTPONED: phase-runner does not call it
+  now (parallel mode is not available). Invoking this skill directly is an
+  explicit opt-in.
 argument-hint: "<task-id> [<task-id> ...]"
 allowed-tools: Agent Read Grep Glob AskUserQuestion
 model: sonnet
