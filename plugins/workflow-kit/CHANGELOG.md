@@ -4,6 +4,25 @@ All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this plugin adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **`phase-runner` 2.0: separate agents for code and for helper work.**
+  - New agent `task-coder` (Sonnet) implements one task with `task-work` and does not commit.
+  - New agent `task-finisher` (Haiku) commits the task with `task-git` and writes the time log.
+  - phase-runner (Opus) starts both agents itself, so no agent starts another agent.
+  - phase-runner runs the guard on the uncommitted changes before the commit. Files outside
+    SCOPE are reported, not restored.
+  - `task-git` and `squash-commits` run on Haiku.
+  - CHECKS, REVIEW, review fix rounds and resume work as before.
+- `task-runner` is no longer used by phase-runner. It stays for single-task use.
+
+### Removed
+
+- **Parallel mode in `phase-runner`.** `--parallel` is ignored with a notice. All tasks run
+  sequentially. `task-runner-parallel` stays in the plugin, but phase-runner does not call it.
+
 ## [0.9.1]
 
 ### Changed

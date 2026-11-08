@@ -162,6 +162,10 @@ Output:
 
 ## Phase mode workflow (SCOPE=phase)
 
+> **phase-runner does not use this agent now.** Since phase-runner 2.0 it starts
+> `task-coder` (code) and `task-finisher` (commit + time log) directly. This section stays
+> for `task-runner-parallel`, which is postponed and not called by phase-runner.
+
 Used when `phase-runner` orchestrates a whole phase on a single `{PHASE_BRANCH}` (e.g.
 `phase/3-007-bookings-export-fields`). The phase branch is created **once** by `phase-runner`
 (not here) and its exact name is passed in the prompt context — never re-derive it; this agent
