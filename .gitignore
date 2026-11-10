@@ -1,1 +1,3 @@
 plugins/.envrc
+# local hash of the last status sent to the dashboard
+/.project-status.sent

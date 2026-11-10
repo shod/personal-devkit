@@ -4,6 +4,33 @@ All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this plugin adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0]
+
+Fixes from the shod-brain phase runs (see `docs/workflow-kit-fixes-from-shod-brain.md`).
+
+### Added
+
+- **`commit.scope_case` in `.claude-project.json`** (`"upper"` default, `"lower"`).
+  `task-git` writes the task ID in the commit scope in this case: `feat(t001): ...`.
+  It fixes commits that commitlint `scope-case: lower-case` rejected.
+  `project-setup` finds this commitlint rule and proposes `"scope_case": "lower"`.
+- **`time-log` END `--checks="<text>"`.** The `Checks:` line shows only real results.
+
+### Changed
+
+- **`verify-task.{sh,ps1}` find task commits in any case.** `feat(t001)` matches `T001`.
+- **`time-log` does not need `php`.** It uses `date` (Git Bash, Linux, macOS) or PowerShell,
+  always in local time. `allowed-tools`: `Bash(php *)` → `Bash(date *)` and `PowerShell`.
+- **`time-log` END has no fixed `Checks: Pint ✓ | PHPStan ✓ | Tests ✓` line.** Without
+  `--checks` there is no `Checks:` line. `task-finisher` and phase-mode `task-runner` do not
+  pass it. Task-scope `task-runner` passes the real results.
+- **Short commit messages in `task-git`.** The subject is 72 characters or less in all modes.
+  There is no body by default. A body line is 100 characters or less.
+- **`task-coder` does not leave background shells.** It runs tests and builds in the
+  foreground. phase-runner stops a left shell with `TaskStop` before it checks the tree.
+- **phase-runner pre-flight (Step 5.5).** It stops before any branch when tracked files are
+  dirty. It warns when `.specify/feature.json` names another feature than `$TASKS_PATH`.
+
 ## [0.10.0]
 
 ### Changed

@@ -11,11 +11,11 @@ description: >-
   sequentially without a confirmation prompt. Indispensable when you need to
   run an entire phase with one command without manually parsing tasks.
 argument-hint: "<phase-number-or-name> [more-phases...] [--auto|--yes|--no-confirm]"
-allowed-tools: Agent Read Grep Glob Skill AskUserQuestion Edit Bash PowerShell TodoWrite
+allowed-tools: Agent Read Grep Glob Skill AskUserQuestion Edit Bash PowerShell TodoWrite TaskStop
 model: opus
 metadata:
   author: speckit
-  version: "2.0"
+  version: "2.1"
   category: task-orchestration
 ---
 
@@ -247,6 +247,23 @@ Before starting any tasks:
    ```
    If this fails with `fatal: bad config line`, `.git/config` is corrupted. **STOP** immediately and report — do not attempt any task.
 
+1.5. **Clean working tree.** Run `git status --short`. Ignore untracked files (`??`) and the
+   agent scratch folders `.claude/worktrees/` and `.claude/agent-memory/`.
+   - If tracked files are modified or staged → **STOP** before any branch is created. Print
+     the dirty files and tell the user to commit or stash them, then run `/phase-runner` again.
+   - Why: uncommitted files (for example in `docs/`) stopped a run after the start, when the
+     phase branch already existed.
+   - In a multi-phase run, do this check before the first phase only. Later phases start
+     after a merge, so the tree is clean.
+
+1.6. **Active feature check.** If `.specify/feature.json` exists, read its `feature_directory`.
+   Compare it with the folder of `$TASKS_PATH` (Step 2).
+   - If they are different, print a warning with both values:
+     > ⚠ `.specify/feature.json` names `{feature_directory}`, but this run uses
+     > `{folder of $TASKS_PATH}`. Skills that read `feature.json` (spec-prepare, speckit-*)
+     > will use the wrong folder. Update `feature.json` if this run is the active feature.
+   - Do not change the file. Do not stop. phase-runner itself uses `$TASKS_PATH`.
+
 2. **Resolve `{current_branch}` from git, NOT from config.** Run `git branch --show-current` and use that as `{current_branch}`. ⚠️ Do **not** trust the `feature_branch` key in `.claude-project.json` — it is frequently STALE (e.g. it may name an old feature branch while the real working branch differs). The branch you are checked out on is the source of truth. Pass this resolved branch to every agent.
 3. **Resolve the phase-branch name.**
    - **Derive `FEATURE_SLUG` from `$TASKS_PATH`** — the basename of the spec directory holding
@@ -386,6 +403,7 @@ For each task:
      - Do NOT edit tasks.md and do NOT mark [x] (phase-runner does that after CHECKS and REVIEW).
      - MCP TOOLS: prefer the project's MCP tools over manual file reading when they exist (for example Laravel Boost: mcp__laravel-boost__database-schema instead of reading migrations, mcp__laravel-boost__last-error + mcp__laravel-boost__read-log-entries before any code fix when tests fail).
      - LANGUAGE: all doc blocks and inline code comments must be written in English.
+     - NO BACKGROUND SHELLS: do NOT use run_in_background for tests or builds. Run them in the foreground with a timeout. Before you return, make sure no shell that you started is still running.
      - WAIT FOR COMPLETION: do NOT return early. End your answer with the TASK_CODER_REPORT block.
      """
    )
@@ -397,6 +415,10 @@ For each task:
    > prose around it. See "Never trust agent prose for pass/fail" in Rules.
 
 5. **Check the coder's result (phase-runner itself — before any commit):**
+   0. **Background shells.** If the agent result lists running background tasks (shells that
+      the agent started and did not stop), stop each one with `TaskStop`. Then continue with
+      item a. The `git status --short` in item d runs after the stop, so it shows the final
+      tree. Write `⚠ stopped background shell: {id}` in the task row.
    a. Git health: `git config --list > /dev/null`. If this fails, **STOP** and report `.git/config` corruption.
    b. `git branch --show-current` must equal `PHASE_BRANCH`. If not → **STOP**.
    c. If the report says `status: stopped` → mark the task `✗ INCOMPLETE`, print the agent's
@@ -817,7 +839,7 @@ Step 7.5 (phase CHECKS and REVIEW), and the final report (Step 8). Concretely:
 ### Verifying task completion
 
 **A task counts as done only when ALL THREE hold:**
-1. A `feat({TASK_ID})` commit is present on `PHASE_BRANCH` (range `{feature_branch}..{PHASE_BRANCH}`), **AND**
+1. A `feat({TASK_ID})` commit (task ID in any case, for example `feat(t001)`) is present on `PHASE_BRANCH` (range `{feature_branch}..{PHASE_BRANCH}`), **AND**
 2. `git diff --stat {feature_branch}..{PHASE_BRANCH}` for that task is **non-empty** — the commit actually changed files, **AND**
 3. At least one changed file matches the task's **SCOPE** (the related-files list extracted from the task text).
 

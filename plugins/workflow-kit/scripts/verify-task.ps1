@@ -37,9 +37,9 @@ foreach ($b in @($FeatureBranch, $PhaseBranch)) {
 }
 
 # --- 1. commit present on PHASE_BRANCH ---------------------------------------
-$commits = @(git log "$FeatureBranch..$PhaseBranch" --oneline -E --grep="\($TaskId\)" | Where-Object { $_ })
+$commits = @(git log "$FeatureBranch..$PhaseBranch" --oneline -i -E --grep="\($TaskId\)" | Where-Object { $_ })
 if ($commits.Count -eq 0) {
-  Write-Err "verify-task: no commit matching 'feat($TaskId)' on $PhaseBranch (range $FeatureBranch..$PhaseBranch)"
+  Write-Err "verify-task: no commit matching '($TaskId)' (any case) on $PhaseBranch (range $FeatureBranch..$PhaseBranch)"
   Fail "${TaskId}: commit missing"
 }
 
@@ -52,7 +52,7 @@ if ($changed.Count -eq 0) {
 }
 
 # Per-task diff: files touched by this task's own commits only.
-$shas = @(git log "$FeatureBranch..$PhaseBranch" --format=%H -E --grep="\($TaskId\)" | Where-Object { $_ })
+$shas = @(git log "$FeatureBranch..$PhaseBranch" --format=%H -i -E --grep="\($TaskId\)" | Where-Object { $_ })
 $taskFiles = @()
 foreach ($sha in $shas) {
   $taskFiles += @(git show --pretty=format: --name-only $sha | Where-Object { $_ })

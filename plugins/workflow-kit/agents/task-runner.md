@@ -154,8 +154,11 @@ Output:
 
 1. Call **Skill tool**: `time-log` with argument:
    ```
-   {TASK_ID} --phase=END --start="{START_TIME}" --branch="{TASK_BRANCH}" --target="{FEATURE_BRANCH}" --merge-msg="{Merge-message}"
+   {TASK_ID} --phase=END --start="{START_TIME}" --branch="{TASK_BRANCH}" --target="{FEATURE_BRANCH}" --merge-msg="{Merge-message}" --checks="{CHECKS}"
    ```
+   `{CHECKS}` = the real results of the checks that `task-work` ran in Phase 2, taken from
+   its output. Example: `Pint ✓ | PHPStan ✓ | Tests ✓`. Write only the checks that ran.
+   If no check ran, do not pass `--checks`.
 2. Skill will collect change statistics via `git diff --shortstat`, write log to `{FEATURE_DIR}/time-log/` and output the summary block
 
 ---
@@ -242,7 +245,8 @@ commit and merges it once into the feature branch with `--ff-only`.
 
 Call **Skill tool**: `time-log` with `{TASK_ID} --phase=END --start="{START_TIME}"
 --branch="{PHASE_BRANCH}" --target="{current_branch}"`. There is **no per-task merge
-message** in phase mode (the merge is per-phase) — omit `--merge-msg`.
+message** in phase mode (the merge is per-phase) — omit `--merge-msg`. Do not pass
+`--checks` either: the checks run once per phase at phase CHECKS.
 
 ---
 

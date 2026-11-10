@@ -10,7 +10,7 @@ argument-hint: "<task-id|phase-number> [--scope=task|phase] [--phase=CREATE|COMM
 allowed-tools: Bash PowerShell Read Grep Glob AskUserQuestion
 metadata:
   author: speckit
-  version: "1.4"
+  version: "1.5"
   category: git-workflow
 model: haiku
 ---
@@ -52,6 +52,23 @@ phase-scope call; use it **verbatim** when present instead of re-deriving the na
 
 If `$ARGUMENTS` is empty — **STOP** and ask the user to specify the task ID:
 > Specify the task ID: `/task-git T013`
+
+## Commit message rules (all scopes)
+
+These rules apply to every commit and merge commit that this skill makes.
+
+1. **Scope case.** Read `commit.scope_case` from `.claude-project.json` → **SCOPE_CASE**.
+   - `"upper"` or no key → keep the task ID as it is: `feat(T001): ...` (default).
+   - `"lower"` → write the task ID in lower case: `feat(t001): ...`.
+   - **TASK_SCOPE** = the task ID in SCOPE_CASE. Use TASK_SCOPE everywhere a commit scope
+     below shows `{TASK_ID}`. A tracker ID (`M24-1145`) keeps its own case.
+   - Why: a commitlint rule `scope-case: lower-case` rejects `feat(T001)`.
+2. **Subject length.** Cut the description so that the full subject line is 72 characters
+   or less. This applies in all modes, not only in AUTO_MODE.
+3. **No body by default.** Write the subject line only. Do not add a body.
+   - If a body is necessary (for example `Refs: #M24-1145`), keep every body line at
+     100 characters or less. Wrap longer lines.
+   - Why: commitlint `body-max-line-length` rejects longer lines.
 
 ## Algorithm
 
@@ -156,15 +173,15 @@ Show the user the determined phase:
 
    **AUTO_MODE=true**: use defaults without questions:
    - Commit type: `feat`
-   - Tracker ID: absent (scope = `{TASK_ID}`)
-   - Description: first 72 characters of task description from tasks.md
+   - Tracker ID: absent (scope = `{TASK_SCOPE}`)
+   - Description: the task description from tasks.md
 
-3. Build commit message:
+3. Build commit message (see "Commit message rules": scope case, 72-character subject, no body):
    - With tracker: `{type}({tracker-id}): {description}`
-   - Without tracker: `{type}({TASK_ID}): {description}`
+   - Without tracker: `{type}({TASK_SCOPE}): {description}`
    - Examples:
      - `feat(M24-1145): add cart model`
-     - `fix(T013): fix price calculation`
+     - `fix(T013): fix price calculation` (`scope_case: "lower"` → `fix(t013): ...`)
 4. Execute:
    - `git add -A`
    - `git commit -m "{message}"`
@@ -231,21 +248,21 @@ Show full report:
 
    **AUTO_MODE=true**: use defaults without questions:
    - Merge commit type: `feat`
-   - Tracker ID: absent (scope = `{TASK_ID}`)
+   - Tracker ID: absent (scope = `{TASK_SCOPE}`)
 
-2. Build merge commit message:
+2. Build merge commit message (see "Commit message rules"):
    ```
    {type}({tracker-id}): {TASK_ID} {brief task description}
 
    Refs: #{tracker-id}
    ```
-   Or without tracker:
+   Or without tracker (subject line only, no body):
    ```
-   {type}({TASK_ID}): {brief task description}
+   {type}({TASK_SCOPE}): {brief task description}
    ```
    Examples:
    - `feat(M24-1145): T013 add cart item DTO\n\nRefs: #M24-1145`
-   - `feat(T013): add cart item DTO`
+   - `feat(T013): add cart item DTO` (`scope_case: "lower"` → `feat(t013): ...`)
 
 3. Execute merge:
    - `git checkout {FEATURE_BRANCH}`
@@ -317,11 +334,14 @@ is **one commit per phase** on the feature branch. Driven exclusively by
 **Condition**: on PHASE_BRANCH, uncommitted changes for one task.
 
 Identical mechanics to the `task`-scope COMMIT phase, with one rule: **the commit scope
-label stays the TASK_ID** so per-task traceability survives on the phase branch.
+label stays the task ID** (as TASK_SCOPE, see "Commit message rules") so per-task
+traceability survives on the phase branch.
 
-1. AUTO_MODE=true (always, in phase scope from orchestrator): type `feat`, no tracker, description = first 72 chars of the task description from tasks.md.
-2. Build message: `feat({TASK_ID}): {description}`.
-3. `git add -A` → `git commit -m "{message}"`.
+1. AUTO_MODE=true (always, in phase scope from orchestrator): type `feat`, no tracker, description = the task description from tasks.md.
+2. Build message: `feat({TASK_SCOPE}): {description}`. Apply "Commit message rules":
+   the full subject line is 72 characters or less, and there is **no body**.
+   Example: `feat(T003): add export field mapper`, or `feat(t003): ...` with `scope_case: "lower"`.
+3. `git add -A` → `git commit -m "{message}"`. Use one `-m` only. A second `-m` adds a body.
 4. Output: `✓ Commit on {PHASE_BRANCH}: {message}`.
 
 > Do **not** merge into the feature branch here — that happens once at MERGE.

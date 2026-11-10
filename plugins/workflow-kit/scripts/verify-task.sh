@@ -29,9 +29,9 @@ git rev-parse --verify --quiet "$FEATURE_BRANCH" >/dev/null || die "unknown bran
 git rev-parse --verify --quiet "$PHASE_BRANCH" >/dev/null || die "unknown branch: $PHASE_BRANCH"
 
 # --- 1. commit present on PHASE_BRANCH -------------------------------------
-COMMITS=$(git log "${FEATURE_BRANCH}..${PHASE_BRANCH}" --oneline -E --grep="\\(${TASK_ID}\\)" 2>/dev/null || true)
+COMMITS=$(git log "${FEATURE_BRANCH}..${PHASE_BRANCH}" --oneline -i -E --grep="\\(${TASK_ID}\\)" 2>/dev/null || true)
 if [ -z "$COMMITS" ]; then
-  echo "verify-task: no commit matching 'feat(${TASK_ID})' on ${PHASE_BRANCH} (range ${FEATURE_BRANCH}..${PHASE_BRANCH})" >&2
+  echo "verify-task: no commit matching '(${TASK_ID})' (any case) on ${PHASE_BRANCH} (range ${FEATURE_BRANCH}..${PHASE_BRANCH})" >&2
   fail "${TASK_ID}: commit missing"
 fi
 
@@ -44,7 +44,7 @@ if [ -z "$CHANGED" ]; then
 fi
 
 # Per-task diff: files touched by this task's own commits only.
-TASK_SHAS=$(git log "${FEATURE_BRANCH}..${PHASE_BRANCH}" --format=%H -E --grep="\\(${TASK_ID}\\)" 2>/dev/null || true)
+TASK_SHAS=$(git log "${FEATURE_BRANCH}..${PHASE_BRANCH}" --format=%H -i -E --grep="\\(${TASK_ID}\\)" 2>/dev/null || true)
 TASK_FILES=""
 for sha in $TASK_SHAS; do
   f=$(git show --pretty=format: --name-only "$sha" 2>/dev/null || true)
