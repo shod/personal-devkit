@@ -16,6 +16,7 @@ An old `feature_branch` key is ignored.
 | `commands` | object | **yes** for phase-runner | Shell commands that agents run. Agents never write Docker or test commands by hand. |
 | `checks` | string[] | recommended | The `commands` keys that phase CHECKS runs, in order. |
 | `review` | object | no | Phase review settings. |
+| `commit` | object | no | Commit message settings for `task-git`. |
 
 ## `paths`
 
@@ -73,6 +74,20 @@ Put fast checks first (formatter, linter), the test suite last.
 Note: a formatter in `checks` must **fix** files, not only check them
 (`dart format lib test`, `ruff format .`, `pint`), so its changes get committed.
 A check-only formatter (`ruff format --check`) fails the phase on any difference.
+
+## `commit`
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `scope_case` | `"upper"` \| `"lower"` | `"upper"` | The case of the task ID in the commit scope. `upper`: `feat(T001): ...`. `lower`: `feat(t001): ...`. |
+
+```json
+"commit": { "scope_case": "lower" }
+```
+
+Use `"lower"` when commitlint has the rule `scope-case: lower-case`. Otherwise commitlint
+rejects every task commit. `verify-task` finds task commits in any case, so both values work
+with phase-runner.
 
 ## `review`
 

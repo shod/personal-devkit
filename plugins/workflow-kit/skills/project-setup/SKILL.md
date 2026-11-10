@@ -85,9 +85,16 @@ app in `paths` (`backend`, `mobile`, …).
    - `mode`: `report`.
    - `rules`: the review rules of every detected stack (table above).
    - `providers`: leave the key out. Then phase-runner uses `workflow-kit:review`.
-6. If the config exists, the proposal is only the **missing keys**.
+6. Detect the commitlint scope rule:
+   1. Find the commitlint config in the repo root: `commitlint.config.*`, `.commitlintrc*`,
+      or the `commitlint` key in `package.json`.
+   2. If the config has `scope-case` with `lower-case`, propose
+      `"commit": { "scope_case": "lower" }`.
+   3. If there is no config or no such rule, do not add the `commit` key. The default is `"upper"`.
+   4. Show the found rule in the summary: `Commit:     scope_case lower (commitlint scope-case)`.
+7. If the config exists, the proposal is only the **missing keys**.
    An existing config without `checks` gets a proposed `checks` list built from its own `commands` keys.
-7. With `--review-only`, the proposal is only the `review` section.
+8. With `--review-only`, the proposal is only the `review` section.
 
 ## Step 4: Show and confirm
 
@@ -97,6 +104,7 @@ app in `paths` (`backend`, `mobile`, …).
    File:       .claude-project.json  (new | update: N keys to add)
    Add:        paths.phase_branch_prefix, commands.test:bg, checks, review
    Checks:     pint → phpstan:changed → test
+   Commit:     scope_case lower (commitlint scope-case)
    Not found:  commands.phpstan (no phpstan.neon)
    ```
 2. Print the full JSON to add.

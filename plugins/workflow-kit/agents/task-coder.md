@@ -77,6 +77,12 @@ Get the changed files list from `git status --short`. Do not write it from memor
 - **PROHIBITED:** PHPUnit with `--coverage`, and any change in the `coverage/` folder.
 - Never weaken, skip or edit a guard test to make it green.
 
+### Background shells
+- Do not use `run_in_background` for tests or builds. Run them in the foreground with a timeout.
+- Before you return, make sure that no shell that you started is still running.
+  If one is still running, stop it.
+- If a background shell stays running, write its ID and command in `notes`.
+
 ### Honest report
 - `phase-runner` checks your result with git and with its own guard run. It does not trust your prose.
 - Copy the raw guard `Tests:` line as it is. Never write "passed" if you did not see it in the output.

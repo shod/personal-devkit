@@ -41,6 +41,7 @@ If one of these values is missing → **STOP** and report which value is missing
    ```
    {TASK_ID} --phase=END --start="{START_TIME}" --branch="{PHASE_BRANCH}" --target="{FEATURE_BRANCH}"
    ```
+   Do not pass `--checks`. The checks run once per phase at phase CHECKS.
    A time-log error does not stop the task. Write it in the report.
 5. Return the report (see below).
 
