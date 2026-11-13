@@ -4,6 +4,12 @@ All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this plugin adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.1]
+
+### Changed
+
+- **`git-cleanup` small-plan fast path.** If the approved plan has 5 or fewer branches and 0 worktrees, the main session runs the `git branch -d` commands directly instead of starting `chore-runner` for Step 5.
+
 ## [0.12.0]
 
 ### Added
