@@ -11,7 +11,8 @@ description: >-
   agent-generated refs. Deletes ONLY branches already merged into the current
   feature branch, always shows a plan first, and never force-deletes unmerged
   work without a separate explicit yes. Git commands run in the chore-runner
-  agent (Haiku); the plan and the approval stay in the main session.
+  agent (Haiku), except a small delete plan, which runs in the main session;
+  the plan and the approval stay in the main session.
 argument-hint: "[yes] [--backups=<feature>]"
 model: sonnet
 ---
@@ -38,8 +39,8 @@ deletion is high and the cost of asking first is low — always err toward askin
 |------|-----|-----|
 | 1–3 resolve, list, classify | `workflow-kit:chore-runner` (Haiku) | Mechanical git commands; long output stays out of the main context. |
 | 4 plan and approval | main session | Approval is a decision. The agent cannot ask the user. |
-| 5 remove and delete | `workflow-kit:chore-runner` (Haiku) | Runs only the exact approved names. |
-| 6 report | main session | Built from the agent's report. |
+| 5 remove and delete | `workflow-kit:chore-runner` (Haiku), or the main session for a small plan | Runs only the exact approved names. See "Small plan: run in the main session". |
+| 6 report | main session | Built from the agent's report, or from the raw command output for a small plan. |
 
 Start `chore-runner` with the Agent tool: `subagent_type: "workflow-kit:chore-runner"`.
 Only the main session can start it (a subagent cannot start a subagent).
@@ -160,7 +161,35 @@ Proceed with removing the merged items? (yes / no)
   covers only the WILL REMOVE list.
 - If the plan is empty: say "Nothing to clean up." and stop.
 
-### Step 5: Execute in the correct order (chore-runner)
+### Small plan: run in the main session
+
+Steps 1–3 always run in `chore-runner`, because the plan size is not known before the scan.
+For Step 5, an agent run costs more than a few direct commands.
+
+**Small plan** = the approved plan has **5 or fewer branches** to delete and **0 worktrees**
+to remove. This is the only place that defines the threshold.
+
+If the plan is a small plan:
+1. Do not start `chore-runner` for Step 5.
+2. Run the Step 5 `git branch -d` commands directly with the Bash tool, one command per line.
+3. Use the same order as Step 5: `phase/*`, then `task/*`, then `worktree-agent-*`.
+4. Read the raw output of each command.
+5. Stop on the first non-zero exit code. Then follow the failure rules in Step 5.
+6. Do not run `git worktree prune`. A small plan has no worktrees.
+
+All safety rules stay the same, with no exceptions:
+- Use only `git branch -d`. Never use `-D` or `--force`.
+- Use only the exact approved branch names. Never use a pattern.
+- Unmerged branches and backup branches still need a separate, explicit approval
+  (see "Unmerged branches" and "Backup branches").
+- If `git branch -d` refuses a branch, stop and report. Do not force it.
+
+Any other plan uses `chore-runner` for Step 5.
+
+### Step 5: Execute in the correct order (chore-runner, or the main session for a small plan)
+
+For a small plan, use the rules in "Small plan: run in the main session". Otherwise use
+`chore-runner` as below.
 
 Order matters — **a branch checked out in a worktree cannot be deleted until the
 worktree is removed first**. Otherwise `git branch -d` fails with "used by worktree".
@@ -182,7 +211,7 @@ REMOVED_WORKTREES: <count>
 DELETED_BRANCHES: <count>
 ```
 
-If the agent stops on a failure:
+If the agent (or the main session, for a small plan) stops on a failure:
 - **`git worktree remove` refuses** (dirty worktree) → do not force. Report it — the
   user may have unsaved work there. `git worktree remove --force <path>` is allowed only
   when the worktree has only ignored/untracked build artifacts, its branch is merged, and
@@ -204,7 +233,8 @@ still there:
   with `git branch -D task/T099` once you're sure.
 ```
 
-Take the counts from `REMOVED_WORKTREES` and `DELETED_BRANCHES`. Do not count from memory.
+Take the counts from `REMOVED_WORKTREES` and `DELETED_BRANCHES`. For a small plan, count the
+raw `Deleted branch ...` lines from the command output. Do not count from memory.
 
 ## Unmerged branches: the explicit-override path
 
