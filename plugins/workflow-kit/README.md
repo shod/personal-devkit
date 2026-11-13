@@ -15,7 +15,7 @@ Framework-agnostic dev workflow skills + workflow agents.
 - **time-log** — record task execution time
 - **todo-plans** — todo-plan management
 - **squash-commits** — squash a branch into one commit vs a base; `--scope=phase` makes one commit per phase (used by phase-runner)
-- **git-cleanup** — remove merged `task/*`, `phase/*`, `worktree-*` branches and worktrees (plan first, never force)
+- **git-cleanup** — remove merged `task/*`, `phase/*`, `worktree-*` branches and worktrees (plan first, never force; git commands run in `chore-runner`)
 - **project-setup** — create or update `.claude-project.json` (detects the stack, uses examples, adds only missing keys, writes after a yes)
 - **hand-off** — save a session snapshot into `specs/<feature>/handoffs/` (active feature or by name)
 - spec-kit OVERLAY (yours, not upstream): **graphify-spec-context**,
@@ -25,6 +25,7 @@ Framework-agnostic dev workflow skills + workflow agents.
 ## Agents (populated)
 - **task-coder** — implement one task, leave changes uncommitted (Sonnet; used by phase-runner)
 - **task-finisher** — commit one task + time log (Haiku; used by phase-runner)
+- **chore-runner** — run routine commands (git housekeeping, checks, `graphify update .`, logs) and report raw results; never edits code, never asks the user (Haiku; used by git-cleanup)
 - **task-runner** — full single-task lifecycle (branch → implement → commit → merge)
 - **task-runner-parallel** — parallel [P]-task execution across worktrees (postponed; phase-runner does not call it)
 

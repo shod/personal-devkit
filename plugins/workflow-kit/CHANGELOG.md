@@ -4,6 +4,42 @@ All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this plugin adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0]
+
+### Added
+
+- **`chore-runner` agent (Haiku).** Runs routine commands with no design decisions: git
+  housekeeping, quality checks, `graphify update .`, status and time logs. It runs only the
+  commands that the prompt names and reports `[<exit code>] <command>` with the raw output
+  lines, then `CHORE_RESULT: ok` or `CHORE_RESULT: failed <command>`.
+  - Never edits source code, never asks the user, never decides on approval.
+  - `git branch -D`, `git reset --hard`, `git push`, `git clean -f`,
+    `git worktree remove --force` and `--no-verify` run only when the prompt names the exact
+    command and target.
+- **`git-cleanup` argument `yes`.** Pre-approval of merged deletions: the plan is shown, the
+  question is skipped. It never covers unmerged branches, dirty worktrees or backup branches.
+- **`git-cleanup` argument `--backups=<feature>`.** Also offers the
+  `backup/<feature>*-pre-squash*` branches from `squash-commits`. They need `git branch -D`,
+  so each one needs a separate, explicit confirmation.
+
+### Changed
+
+- **`git-cleanup` runs its git commands in `chore-runner`.** Steps 1–3 (resolve, list,
+  classify with `git merge-base --is-ancestor`) and Step 5 (remove worktrees, `git branch -d`)
+  run in the agent. The plan and the approval stay in the main session. Step 5 gets the exact
+  approved names, one command per item, never a pattern.
+
+### Next
+
+Candidates for `chore-runner` in later releases (not implemented):
+
+- `phase-runner` / `task-git` CHECKS — run the `checks` commands; the verdict stays in the
+  main session, based on the raw lines.
+- `phase-runner` Step 8 — `graphify update .`, only when `graphify-out/` exists.
+- `time-log` — the whole skill; candidate for whole-skill delegation (`context: fork`).
+  Verify the frontmatter field names in the current Claude Code docs first.
+- `project-status` — `mise run status` (user-level skill, not in the plugin).
+
 ## [0.11.0]
 
 Fixes from the shod-brain phase runs (see `docs/workflow-kit-fixes-from-shod-brain.md`).
