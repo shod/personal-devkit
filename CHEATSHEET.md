@@ -1,6 +1,6 @@
 # Plugins cheat-sheet
 
-Working reference for `shod/personal-devkit` (GitHub, **public**, default branch `master`).
+Working reference for `shod/personal-devkit` (GitHub, **public**, default branch `main`).
 Marketplace hosts 5 plugins: `workflow-kit`, `laravel-kit`, `flutter-kit`, `python-kit`, `shod-speckit`.
 
 ---
@@ -65,7 +65,7 @@ New machine/collaborator: clone → trust workspace → accept the install promp
 ## The sync loop (improve a skill everywhere)
 ```
 # in C:\Projects\personal-devkit
-git add . && git commit -m "improve <skill>" && git push     # master
+git add . && git commit -m "improve <skill>" && git push     # main
 
 # in each consuming project (inside Claude Code)
 /plugin marketplace update
@@ -100,7 +100,7 @@ No manifest edit needed — skills are auto-discovered under the plugin.
 
 ## Troubleshooting
 - **Kit doesn't show up** → `/plugin marketplace update`; confirm the repo/branch is reachable:
-  `curl -fsSL https://raw.githubusercontent.com/shod/personal-devkit/master/.claude-plugin/marketplace.json`
+  `curl -fsSL https://raw.githubusercontent.com/shod/personal-devkit/main/.claude-plugin/marketplace.json`
 - **Skill not triggering** → remember the namespace (`<kit>:<skill>`); check it's enabled in `/plugin`.
 - **Private repo later** → consuming machines need read access (SSH key on the account, or a PAT). Public = no auth.
 - **Auth on push** → this repo uses HTTPS/SSH like any GitHub repo; SSH key must be attached to the `shod` account.
