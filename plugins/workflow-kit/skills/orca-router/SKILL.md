@@ -1,12 +1,12 @@
 ---
-name: router
+name: orca-router
 description: >-
   Cross-project flow router: runs a feature through the SDD flow
   (spec-prepare → approve → phase-runner → checks → cross-model review → fix loop →
   UI check → human acceptance) as an Orca coordinator, one Orca worktree per feature,
   a chosen agent/model per stage. Reads the flow from flows/feature.yaml (+ project
   override .claude/flow.yaml) and the queue from PROJECT_STATUS.md. Use when the user
-  says "/router run", "прогони фичу через flow", "запусти очередь", "router status".
+  says "/orca-router run", "прогони фичу через flow", "запусти очередь", "orca-router status".
 argument-hint: "run <project> <idea|NNN> | queue [<project>] | status | resume <feature_slug>"
 allowed-tools: Bash PowerShell Read Grep Glob Edit Write AskUserQuestion
 model: opus
@@ -16,14 +16,14 @@ metadata:
   category: orchestration
 ---
 
-# Router — SDD flow coordinator over Orca
+# Orca Router — SDD flow coordinator over Orca
 
 The router is a **coordinator**. It never writes product code, never edits specs and
 never merges into main/development. It starts workers, checks their results itself,
 moves the feature to the next stage and asks the human at the gates.
 
 ```
-router (this session, opus)                 Orca
+orca-router (this session, opus)                 Orca
 ├─ orca orchestration run-create            one Run per router session
 └─ per feature:
     ├─ worktree  flow-{feature_slug}        created by the first worker (new-child)
@@ -37,10 +37,10 @@ router (this session, opus)                 Orca
 
 | Command | What it does |
 |---|---|
-| `/router run <project> <idea\|NNN>` | Run one feature through the flow. |
-| `/router queue [<project>]` | Take items with `status: ready` from the `## Queue` of PROJECT_STATUS.md (one project or all projects of the dashboard), run them one after another (max 1 active feature per project). |
-| `/router status` | `orca orchestration task-list --json` + the last line of each `flow-log.md` → table: feature, stage, waiting for. |
-| `/router resume <feature_slug>` | Continue after a stop: read `flow-log.md`, start from the last unfinished stage. |
+| `/orca-router run <project> <idea\|NNN>` | Run one feature through the flow. |
+| `/orca-router queue [<project>]` | Take items with `status: ready` from the `## Queue` of PROJECT_STATUS.md (one project or all projects of the dashboard), run them one after another (max 1 active feature per project). |
+| `/orca-router status` | `orca orchestration task-list --json` + the last line of each `flow-log.md` → table: feature, stage, waiting for. |
+| `/orca-router resume <feature_slug>` | Continue after a stop: read `flow-log.md`, start from the last unfinished stage. |
 
 ## Queue format (PROJECT_STATUS.md)
 
@@ -66,7 +66,7 @@ The router changes only the `[status]` and the `stage:` / `gate:` tail of its ow
 
 ### 2. Start the Run (once per session)
 ```
-orca orchestration run-create --objective "router: {project} {feature}" --json
+orca orchestration run-create --objective "orca-router: {project} {feature}" --json
 ```
 
 ### 3. Run a stage — `type: worker`

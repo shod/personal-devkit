@@ -1,5 +1,5 @@
 # feature.yaml — default SDD flow for ONE feature.
-# Run by the `router` skill acting as an Orca coordinator.
+# Run by the `orca-router` skill acting as an Orca coordinator.
 #
 #   idea / NNN ──► prepare ──► [approve-spec] ──► implement ──► verify ──► cross-review
 #                     ▲              │                ▲                         │
