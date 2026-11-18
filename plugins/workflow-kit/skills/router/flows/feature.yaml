@@ -1,0 +1,162 @@
+# feature.yaml — default SDD flow for ONE feature.
+# Run by the `router` skill acting as an Orca coordinator.
+#
+#   idea / NNN ──► prepare ──► [approve-spec] ──► implement ──► verify ──► cross-review
+#                     ▲              │                ▲                         │
+#                     │           rework              │                     findings
+#                     │              ▼                │                         ▼
+#                     └──────── bad_spec ◄──────── fix (/speckit.fix) ◄─────────┘
+#                                                     │
+#                                    ui-check ──► [accept] ──► finish
+#
+# Stages reuse what already exists in workflow-kit / shod-speckit; the flow only
+# decides ORDER, MODEL PER STAGE, PASS CONDITIONS and WHERE TO GO ON FAILURE.
+#
+# Project override: `.claude/flow.yaml` in the project repo. Keys there are merged
+# over this file by stage `id` (shallow merge per stage). Use it to switch stages on/off
+# (ui-check, approve-spec) or change models — do not copy the whole file.
+
+version: 1
+name: feature
+
+# ── Inputs ────────────────────────────────────────────────────────────────────
+inputs:
+  project:  required   # Orca repo selector / path, e.g. C:\Projects\saylo
+  feature:  required   # free-text idea  OR  an existing spec folder ("008" / "specs/008-x")
+  base:     optional   # branch to start from; default = repo default branch
+
+# ── Models (aliases → what is passed to `worker-start --agent/--model`) ───────
+# `--model` takes opaque provider IDs; aliases below are resolved by the router.
+# Check the real IDs once with the agent CLI and pin them here.
+models:
+  planner:  { agent: claude, model: opus }          # spec, plan, orchestration
+  coder:    { agent: claude, model: opus }          # phase-runner itself (it starts sonnet/haiku agents)
+  fixer:    { agent: claude, model: sonnet }
+  reviewer: { agent: codex }                        # second opinion from ANOTHER vendor
+  ui:       { agent: claude, model: sonnet }
+
+# ── Limits ────────────────────────────────────────────────────────────────────
+limits:
+  max_loopbacks: 2          # total returns to an earlier stage per feature; then → human gate
+  max_fix_rounds: 2         # fix ↔ cross-review cycles
+  worker_timeout_min: 120   # per stage; on timeout → escalate to human
+
+# ── Isolation ─────────────────────────────────────────────────────────────────
+worktree:
+  mode: new-child                    # one Orca worktree per feature; all stages run in it
+  name: "flow-{feature_slug}"
+  setup: run                         # repo setup hooks (deps install etc.)
+
+# ── Stages ────────────────────────────────────────────────────────────────────
+# type: worker  → a supervised Orca worker runs `run` in the feature worktree
+# type: gate    → Orca decision gate; the flow waits for a human answer
+# type: router  → the router does it itself (no agent)
+#
+# pass_when: checks the ROUTER runs itself in the worktree. A worker's own
+# "done, all green" is never enough (same rule as phase-runner).
+
+stages:
+
+  - id: prepare
+    type: worker
+    use: planner
+    run: "/workflow-kit:spec-prepare {feature}"
+    pass_when:
+      - outcome: succeeded
+      - files_exist: ["{spec_dir}/spec.md", "{spec_dir}/plan.md", "{spec_dir}/tasks.md"]
+      - file_not_contains: { file: "{spec_dir}/spec.md", text: "[NEEDS CLARIFICATION" }
+    on_fail: ask                      # spec problems need a human, not a retry
+
+  - id: approve-spec
+    type: gate
+    enabled: true                     # set false in a project for small/trusted work
+    question: "Spec {feature_slug} ready ({spec_dir}). {spec_summary}. Start implementation?"
+    options: [go, rework, drop]
+    on:
+      go: implement
+      rework: prepare                 # the gate comment goes into the prepare prompt
+      drop: end
+
+  - id: implement
+    type: worker
+    use: coder
+    run: "/workflow-kit:phase-runner {open_phases} --auto"
+    pass_when:
+      - outcome: succeeded
+      - open_tasks_only_manual: "{spec_dir}/tasks.md"   # `- [ ]` left only for ⊘ MANUAL tasks
+      - git_clean: true
+    on_fail: ask                      # phase-runner already stops with a reason; show it
+
+  - id: verify
+    type: router
+    # One more run of the project checks on the INTEGRATED feature branch
+    # (phase-runner checked each phase separately).
+    run: checks                       # = `.claude-project.json` → checks, in order
+    pass_when:
+      - all_checks: green
+    on_fail: fix
+
+  - id: cross-review
+    type: worker
+    use: reviewer
+    readonly: true                    # reviewer must not change files or commit
+    prompt: |
+      Review the diff {base}...{feature_branch} against {spec_dir}/spec.md and
+      {spec_dir}/plan.md. Check: every acceptance scenario is implemented, no scope
+      creep, correctness, security, tests cover the scenarios.
+      Do NOT change files, do NOT commit.
+      Write the report to {spec_dir}/reviews/feature-cross-review.md.
+      Each finding: severity (CRITICAL|WARNING|INFO), file:line, problem, recommendation.
+      Last line exactly: REVIEW_RESULT: critical=<n> warning=<n> info=<n>
+    pass_when:
+      - report_line: { file: "{spec_dir}/reviews/feature-cross-review.md",
+                       prefix: "REVIEW_RESULT:", critical: 0 }
+    on_fail: fix
+
+  - id: fix
+    type: worker
+    use: fixer
+    run: "/speckit.fix {failure_report}"   # report of the stage that failed
+    # /speckit.fix classifies each finding; the router routes by the result:
+    route:
+      patch:      "{came_from}"       # fixed in code → re-run the stage that failed
+      bad_spec:   prepare             # spec was wrong → update spec/plan/tasks, then go on
+      intent_gap: ask                 # intent/PRD question → human
+      defer:      "{came_from}"       # recorded as follow-up, not blocking
+      reject:     "{came_from}"       # finding is not real; reason goes into the report
+    counts_as_loopback: true
+
+  - id: ui-check
+    type: worker
+    enabled: false                    # turn on in projects with a UI (Flutter web, Astro, admin)
+    use: ui
+    prompt: |
+      Start the app with `.claude-project.json` → commands.up (if defined).
+      Open {dev_url} with the browser MCP and walk through every acceptance scenario
+      in {spec_dir}/spec.md, plus the ⊘ MANUAL tasks from {spec_dir}/tasks.md.
+      Save screenshots to {spec_dir}/reviews/ui/. Do NOT change code.
+      Write {spec_dir}/reviews/ui-check.md; last line exactly: UI_RESULT: pass|fail
+    pass_when:
+      - report_line: { file: "{spec_dir}/reviews/ui-check.md", prefix: "UI_RESULT:", equals: pass }
+    on_fail: fix
+
+  - id: accept
+    type: gate
+    question: |
+      {feature_slug} is ready for acceptance in worktree {worktree_name}.
+      Checks: {checks_summary}. Review: {review_summary}. UI: {ui_summary}.
+      Manual tasks left: {manual_tasks}. Loopbacks used: {loopbacks}/{max_loopbacks}.
+    options: [accept, rework, drop]
+    on:
+      accept: finish
+      rework: fix                     # the gate comment becomes the fix input
+      drop: end
+
+  - id: finish
+    type: router
+    steps:
+      - flow_log_close                # final line in {spec_dir}/flow-log.md
+      - project_status                # update PROJECT_STATUS.md (Last/Next step, queue item → done)
+      - worker_release                # release worker terminals; keep the worktree
+    # The router does NOT merge into main/development and does NOT open the MR/PR.
+    # That stays a human step (GitLab MR for work projects, GitHub PR for personal ones).
