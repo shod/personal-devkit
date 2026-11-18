@@ -55,7 +55,7 @@ Check the last line of each agent report. If it is `CHORE_RESULT: failed <comman
 Parse `$ARGUMENTS`:
 - `yes` — pre-approval of **merged** deletions. The skill still shows the plan, but does not
   ask the Step 4 question. It never covers unmerged branches, dirty worktrees or backup branches.
-- `--backups=<feature>` — also offer the `backup/<feature>*-pre-squash*` branches (see
+- `--backups=<feature>` — also offer the backup branches of that feature (see
   "Backup branches"). Without this argument the skill never lists or deletes backup branches.
 
 ## The one rule that makes this safe
@@ -103,9 +103,12 @@ WORKTREES: <path> [<branch>] merged|unmerged
 
 If `--backups=<feature>` is given, add to the same prompt:
 ```
-6. git branch --list "backup/<feature>*-pre-squash*"
+6. git branch --list "backup/*" --format="%(refname:short)"
 7. For each branch from command 6: git log -1 --format="%h %cs %s" <branch>
 ```
+
+The agent does not filter the backup branches. The main session applies the match rule in
+"Backup branches".
 
 Then check the result in the main session:
 
@@ -250,23 +253,50 @@ unmerged branch ("yes, delete task/T099, I don't need it"), you may run
 
 ## Backup branches (`--backups=<feature>`)
 
-`squash-commits` leaves `backup/<branch>-pre-squash` branches (sometimes with a
-suffix like `-pre-squash-2`). They are **not** in the default families:
-- The skill lists them only with `--backups=<feature>`, and only the ones whose name
-  starts with `backup/<feature>`.
+### Backup branch names
+
+`squash-commits` creates `backup/{CURRENT_BRANCH}-pre-squash`. If that name exists, it adds a
+suffix: `-pre-squash-2`. Backup branches made by hand use other names. Examples:
+- `backup/phase-1-028-pre-squash`
+- `backup/phase-1-025-sync-export-filter-presquash`
+- `backup/phase-1-026-tui-visual-refresh-presquash`
+
+So the name can start with `backup/phase-<N>-`, can have only the feature number, and can end
+with `-pre-squash`, `-presquash`, or either one plus a number (`-pre-squash-2`).
+
+### Match rule (main session)
+
+`<feature>` is a slug such as `028-card-quality-feedback`. `<NNN>` is its leading digits (`028`).
+A `backup/*` branch from command 6 is a backup of `<feature>` only when **both** are true:
+1. The name contains `pre-squash` or `presquash`.
+2. The name contains the full slug `<feature>`, **or** `<NNN>` as a separate segment: `-<NNN>-`,
+   or `-<NNN>` right before the suffix (for example `-028-pre-squash`).
+
+Do not match a number inside a longer number. `028` does not match `1028`. The characters
+before and after `<NNN>` must be `-`, `/`, or the start or end of the name.
+
+### Plan and deletion rules
+
+Backup branches are **not** in the default families:
+- The skill lists them only with `--backups=<feature>`.
 - `git branch -d` refuses them, because a squash rewrites history: the backup commits
   are not ancestors of the feature branch. So deletion needs `git branch -D`.
-- Show them in the plan in a separate block `BACKUP BRANCHES (force-delete needed)`, with
-  the tip line (`%h %cs %s`) from the agent report.
-- Delete them only after a separate, explicit confirmation that names them (the same
-  rule as the explicit-override path). The `yes` argument never covers them.
+- Show the matching branches in the plan in a separate block
+  `BACKUP BRANCHES (force-delete needed)`, with the tip line (`%h %cs %s`) from the agent report.
+- Show every other `backup/*` branch in a separate block
+  `OTHER BACKUP BRANCHES (not offered)`. Do not offer them for deletion. The user can run the
+  skill again with that feature.
+- If no branch matches, write `No backup branches for <feature>` and list the existing
+  `backup/*` names, so the user can see the naming.
+- Delete the matching branches only after a separate, explicit confirmation that names them
+  (the same rule as the explicit-override path). The `yes` argument never covers them.
 - Pass the exact names to `chore-runner`, one `git branch -D <name>` line per approved branch.
 
 ## What this skill never touches
 
 - The feature branch itself, `main`, `master`, `develop`, or any branch not
-  matching `task/*` / `phase/*` / `worktree-*` (and `backup/<feature>*-pre-squash*`
-  only with `--backups`).
+  matching `task/*` / `phase/*` / `worktree-*` (and the matching `backup/*`
+  branches only with `--backups`).
 - Anything with uncommitted changes in a worktree — if `git worktree remove`
   refuses because the worktree is dirty, **stop and report** rather than forcing;
   the user may have unsaved work there.
