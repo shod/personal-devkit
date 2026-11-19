@@ -4,7 +4,7 @@ description: >-
   Implementation of a single specific task from tasks.md. Use /task-work T*** (e.g. T012, T025, T101)
   to start the implementation of the specified task. Recommended to call in a clean context (/clear before running).
   Supports --defer-checks to skip per-task Pint/PHPStan/Tests when checks run once per phase (phase-runner).
-argument-hint: "<task-id> [--defer-checks]"
+argument-hint: "<task-id> [--defer-checks] [--tasks=<path>]"
 model: sonnet
 allowed-tools: Bash(php *) Bash(./vendor/bin/*) Bash(composer *) Bash(git *) Bash(mkdir *) Bash(ls *) Bash(npm *) Bash(npx *) Bash(sail *) Bash(./sail *) Read Grep Glob Write Edit Task mcp__laravel-boost__application-info mcp__laravel-boost__search-docs mcp__laravel-boost__database-schema mcp__laravel-boost__database-query mcp__laravel-boost__tinker mcp__laravel-boost__list-artisan-commands mcp__laravel-boost__read-log-entries mcp__laravel-boost__last-error mcp__laravel-boost__get-config mcp__laravel-boost__get-absolute-url
 ---
@@ -40,6 +40,9 @@ If `$ARGUMENTS` is empty — **STOP** and ask the user to specify the task ID:
 1. Extract TASK_ID from `$ARGUMENTS` (first match against pattern `T\d+`)
 2. If TASK_ID not found — stop and ask user to specify ID
 3. Extract `--defer-checks` (alias `--no-pint`) from `$ARGUMENTS` → save as **DEFER_CHECKS=true** (otherwise `false`). When `true`, the quality gates (Pint, PHPStan, Tests) are **SKIPPED** here because they run once per phase at the phase-level CHECKS step (see `phase-runner` + `task-git --scope=phase --phase-action=CHECKS`). This is set automatically when running under branch-per-Phase orchestration.
+4. Extract `--tasks=<path>` → save as **TASKS_FILE** (otherwise empty). phase-runner always
+   passes it. `tiny-fix` plans live in `specs/tiny/{YYMMDD}-{slug}/`, and `.specify/feature.json`
+   does not point there.
 
 ### Step 1: Load and execute speckit.implement workflow
 
@@ -47,6 +50,32 @@ If `$ARGUMENTS` is empty — **STOP** and ask the user to specify the task ID:
 2. Execute **all steps** from implement.md **in full**, with one restriction:
 
 > **SCOPE OVERRIDE**: At the task execution step, implement **ONLY** task {TASK_ID}. All other tasks — **SKIP**. Do not proceed to the next task after completion.
+
+> **TASKS OVERRIDE (when TASKS_FILE is set)**: use TASKS_FILE as `tasks.md`, and its folder as
+> FEATURE_DIR. Tell the Spec Kit scripts about this folder with three environment variables.
+> Set them **in the same command** as the script, because every shell call starts a new shell:
+>
+> | Variable | Value | Why |
+> |---|---|---|
+> | `SPECIFY_FEATURE_DIRECTORY` | FEATURE_DIR (repo-relative) | the script uses this folder, not `feature.json` |
+> | `SPECIFY_FEATURE` | basename of FEATURE_DIR (`261119-fix-date`) | the bash branch-name check passes on `phase/1-…` |
+> | `SPECIFY_FEATURE_NO_PERSIST` | `1` | the script does not write `.specify/feature.json` |
+>
+> ```
+> # bash
+> SPECIFY_FEATURE_DIRECTORY={FEATURE_DIR} SPECIFY_FEATURE={FEATURE_SLUG} SPECIFY_FEATURE_NO_PERSIST=1 .specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks
+> # PowerShell
+> $env:SPECIFY_FEATURE_DIRECTORY='{FEATURE_DIR}'; $env:SPECIFY_FEATURE='{FEATURE_SLUG}'; $env:SPECIFY_FEATURE_NO_PERSIST='1'; & .specify/scripts/powershell/check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks
+> ```
+> Use the script arguments from the frontmatter of implement.md, if they differ from these.
+> - The `FEATURE_DIR` in the script output must be the folder of TASKS_FILE. If it is another
+>   folder (an old Spec Kit without `SPECIFY_FEATURE_DIRECTORY`), ignore the output and use the
+>   folder of TASKS_FILE.
+> - If the script fails, read its error. A missing `plan.md` or `tasks.md` in FEATURE_DIR → **STOP**
+>   and report it. Any other script error (branch name, unknown option) → continue with TASKS_FILE
+>   and write the error in the summary.
+> - Never let a script change `.specify/feature.json`. If `git status --short` shows it changed,
+>   restore it with `git checkout -- .specify/feature.json` and write this in the summary.
 
 > **CHECKS OVERRIDE (when DEFER_CHECKS=true)**: At the quality-gate step of implement.md, **SKIP Pint, PHPStan, and the test suite**. They run once per phase at the phase-level CHECKS step — do not run them per task. Still implement the code and apply all traceability tags. (When DEFER_CHECKS=false — the default for direct `/task-work` use — run the gates as normal.)
 

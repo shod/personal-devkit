@@ -34,7 +34,8 @@ If TASK_ID is not in the prompt → **STOP** and report: "No task ID specified (
 1. Run `git branch --show-current`.
    - If the result is not `{PHASE_BRANCH}` → **STOP** and report:
      "Expected {PHASE_BRANCH}, but the current branch is {current}."
-2. Call the **Skill tool**: `task-work` with the argument `{TASK_ID} --defer-checks`.
+2. Call the **Skill tool**: `task-work` with the argument `{TASK_ID} --defer-checks --tasks={TASKS_PATH}`.
+   - `--tasks=` makes task-work read this file. Do not let it pick another `tasks.md`.
    - The skill implements the task and adds the `@created-by {TASK_ID}` tags.
    - The skill skips Pint, PHPStan and the test suite. They run once per phase.
    - The skill runs `commands.test:guard` if the project defines it.
