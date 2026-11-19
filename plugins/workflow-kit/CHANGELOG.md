@@ -4,6 +4,30 @@ All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this plugin adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0]
+
+### Added
+
+- **`tiny-fix` skill.** A light Spec Kit flow for small changes and bug fixes (1–5 files,
+  up to 8 tasks). It checks the scope (large work → `/spec-prepare`), finds the files and the
+  root cause of a bug, and writes `specs/tiny/{YYMMDD}-{slug}/spec.md`, a short `plan.md` and
+  a one-phase `tasks.md`. The folder has the files that the Spec Kit scripts need, but it does
+  not become the active feature (`.specify/feature.json` does not change). A bug fix starts with a regression test task. After a gate and a confirmation it
+  commits the plan (`docs(tiny): plan {slug}`) and runs `phase-runner 1 --tasks=…`.
+  Flags: `--plan-only`, `--yes`, `--run=<folder>` (run or resume an existing plan).
+
+### Changed
+
+- **`phase-runner --tasks=<path>`.** Uses this `tasks.md` and does not search
+  `specs/*/tasks.md`. It skips the `feature.json` warning. The path goes to `task-coder`,
+  `task-finisher` and the `workflow-kit:review` provider (`--feature-dir`).
+- **`phase-runner --squash-message="<msg>"`.** Sets the subject of the phase commit.
+- **`task-work --tasks=<path>`**, **`task-git --tasks=<path>`**, **`review --feature-dir=<path>`.**
+  They use the given folder instead of `.specify/feature.json` or a `specs/*` search.
+  `task-work` runs the Spec Kit prerequisite script with `SPECIFY_FEATURE_DIRECTORY`,
+  `SPECIFY_FEATURE` (passes the bash branch-name check on `phase/1-…`) and
+  `SPECIFY_FEATURE_NO_PERSIST=1` (no write to `feature.json`).
+
 ## [0.12.1]
 
 ### Changed

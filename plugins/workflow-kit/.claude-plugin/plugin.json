@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin.json",
   "name": "workflow-kit",
-  "version": "0.12.2",
-  "description": "Framework-agnostic dev workflow: graphify, spec-kit overlay (spec-prepare), task/phase runners, time-log, squash-commits, git-cleanup, hand-off, skill-generator.",
+  "version": "0.13.0",
+  "description": "Framework-agnostic dev workflow: graphify, spec-kit overlay (spec-prepare), task/phase runners, tiny-fix, time-log, squash-commits, git-cleanup, hand-off, skill-generator.",
   "author": { "name": "Oleg Shmyk", "email": "aleh.shmyk@gmail.com" },
   "keywords": ["workflow", "speckit", "graphify", "tasks"]
 }

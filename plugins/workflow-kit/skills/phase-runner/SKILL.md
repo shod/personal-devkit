@@ -10,7 +10,7 @@ description: >-
   phase tasks. Accepts several phases (/phase-runner 4 5 6) — they run
   sequentially without a confirmation prompt. Indispensable when you need to
   run an entire phase with one command without manually parsing tasks.
-argument-hint: "<phase-number-or-name> [more-phases...] [--auto|--yes|--no-confirm]"
+argument-hint: "<phase-number-or-name> [more-phases...] [--tasks=<path>] [--squash-message=\"<msg>\"] [--auto|--yes|--no-confirm]"
 allowed-tools: Agent Read Grep Glob Skill AskUserQuestion Edit Bash PowerShell TodoWrite TaskStop
 model: opus
 metadata:
@@ -89,6 +89,10 @@ Accepted formats:
 
 Optional flags:
 - `--auto`, `--yes`, `-y`, `--no-confirm` — skip the confirmation prompt.
+- `--tasks=<path>` — use this `tasks.md` and do not search `specs/*/tasks.md`.
+  `tiny-fix` uses it for `specs/tiny/{YYMMDD}-{slug}/tasks.md`.
+- `--squash-message="<msg>"` — the subject of the phase commit (Step 7.5 item 3), instead of
+  `feat(phase-{N}): {PHASE_TITLE}`. `tiny-fix` uses it, for example `fix: correct invoice date format`.
 
 If `$ARGUMENTS` contains no phase number — **STOP** and ask the user:
 > Specify the phase number: `/phase-runner 4`
@@ -104,6 +108,9 @@ If `$ARGUMENTS` contains no phase number — **STOP** and ask the user:
     > ℹ️ `--parallel` is not available now. All tasks run sequentially.
 
     Then continue. Do not stop.
+1b. Strip `--tasks=<path>` and save the path as **`TASKS_OVERRIDE`**. Strip
+    `--squash-message="<msg>"` (quoted or not) and save the text as **`SQUASH_MESSAGE`**.
+    Do this **before** item 2: these values can contain digits, and the digits are not phases.
 2. Extract **all** phase numbers from the remainder, in the order given: every `\d+`, plus ranges `N-M` expanded to `N, N+1, …, M`. Ignore a trailing spec identifier (Step 2a) when it is a known spec name/number rather than a phase.
 3. Save the ordered, de-duplicated list as **`$PHASES`**.
 4. If `$PHASES` is empty — stop and ask the user to specify.
@@ -139,6 +146,8 @@ After the last phase, print one combined final report (Step 8) with a per-phase 
 
 ### Step 2: Load tasks.md (resolve the ACTIVE spec — there are usually many)
 
+0. **`TASKS_OVERRIDE` is set (Step 1b)** → use it as `$TASKS_PATH`. If the file does not
+   exist → **STOP**: "tasks file not found: {TASKS_OVERRIDE}". Skip items 1–3 and go to item 4.
 1. Find all `specs/*/tasks.md` via Glob. **There will normally be several** (each completed feature keeps its tasks.md). Do NOT assume the first/only one.
 2. **Pick the ACTIVE spec** — the one this run targets — by this precedence:
    a. If `$ARGUMENTS` names a spec (e.g. `/phase-runner 4 007` or `/phase-runner 4 bookings-export`), use that spec.
@@ -263,6 +272,8 @@ Before starting any tasks:
      > `{folder of $TASKS_PATH}`. Skills that read `feature.json` (spec-prepare, speckit-*)
      > will use the wrong folder. Update `feature.json` if this run is the active feature.
    - Do not change the file. Do not stop. phase-runner itself uses `$TASKS_PATH`.
+   - Skip this check when `TASKS_OVERRIDE` is set. A tiny plan is not a Spec Kit feature,
+     so `feature.json` names another folder by design.
 
 2. **Resolve `{current_branch}` from git, NOT from config.** Run `git branch --show-current` and use that as `{current_branch}`. ⚠️ Do **not** trust the `feature_branch` key in `.claude-project.json` — it is frequently STALE (e.g. it may name an old feature branch while the real working branch differs). The branch you are checked out on is the source of truth. Pass this resolved branch to every agent.
 3. **Resolve the phase-branch name.**
@@ -395,7 +406,7 @@ For each task:
      - PHASE_BRANCH: {PHASE_BRANCH} (already created and checked out by phase-runner)
      - TASKS_PATH: {$TASKS_PATH}
      - All project commands (Docker, tests, linting, artisan make:*) are defined in {cwd}/.claude-project.json under "commands.*". Read that file first — do NOT write docker compose commands by hand.
-     - Run: Skill task-work "{TASK_ID} --defer-checks".
+     - Run: Skill task-work "{TASK_ID} --defer-checks --tasks={$TASKS_PATH}".
      - GIT: do NOT commit, branch, merge, stash or reset. Leave all changes uncommitted. task-finisher commits them after phase-runner checks them.
      - CHECKS DEFERRED (--defer-checks): do NOT run the phase checks (formatters, linters, static analysis, the test suite). They run once for the whole phase at the phase CHECKS step.
      - GUARD (not deferred): if commands.test:guard exists in .claude-project.json, run it after implementing. Red → fix inside SCOPE and re-run; never weaken or skip a guard test; still red → STOP and report. Paste the raw guard `Tests:` summary line into your report.
@@ -452,6 +463,7 @@ For each task:
      - PHASE_BRANCH: {PHASE_BRANCH}
      - FEATURE_BRANCH: {current_branch}
      - START_TIME: {START_TIME}
+     - TASKS_PATH: {$TASKS_PATH}
      - Working directory: {cwd}
 
      Commit with task-git (phase scope, COMMIT, --auto), then run time-log END.
@@ -533,12 +545,16 @@ the merge exactly once.
      in the final report and go to item 2.
    - Placeholders in `args`: `{base}` = `{current_branch}`, `{N}` = phase number,
      `{spec_path}` = `spec.md` next to `$TASKS_PATH`, `{tasks_path}` = `$TASKS_PATH`,
-     `{out}` = the report path of this provider (see below).
+     `{out}` = the report path of this provider (see below),
+     `{feature_dir}` = the folder of `$TASKS_PATH`.
+   - For the `workflow-kit:review` provider, add `--feature-dir={feature_dir}` to its args if
+     they do not have it. Then the review reads the spec of this run, not `.specify/feature.json`.
    - If `review` is absent, use the defaults. If `mode` is `off`, write `Review: off` in the
      final report and go to item 2.
 
    **Report paths.** Each provider writes one file:
-   `{feature folder}/reviews/phase-{N}-{provider-slug}.md`, where `{provider-slug}` is the
+   `{feature folder}/reviews/phase-{N}-{provider-slug}.md` (`{feature folder}` = the folder of
+   `$TASKS_PATH`), where `{provider-slug}` is the
    skill name with `:` replaced by `-` (for example `workflow-kit-review`).
 
    **Run the providers.** For each provider, in the order of the list:
@@ -656,6 +672,8 @@ the merge exactly once.
    - **`PHASE_TITLE`** = the text of the phase heading in tasks.md after `Phase {N}:`, for
      example `## Phase 3: User Story 1 - Export fields` → `User Story 1 - Export fields`.
      Remove a `(Priority: …)` suffix. Cut it to 60 characters.
+   - If `SQUASH_MESSAGE` is set (Step 1b), use it as the message instead of
+     `feat(phase-{N}): {PHASE_TITLE}`.
    - The message has **only the subject line**. Do not add a list of tasks to the body.
    - On any STOP from the skill → **STOP**. Do not merge.
 

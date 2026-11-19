@@ -12,6 +12,11 @@ Framework-agnostic dev workflow skills + workflow agents.
 - **task-runner-parallel** — run [P] tasks in isolated worktrees
 - **phase-runner** — orchestrate a whole phase, task by task (Opus orchestrator →
   `task-coder` on Sonnet → `task-finisher` on Haiku) ⚠ see prereq
+- **tiny-fix** — small change or bug fix in one command: writes a short plan
+  (`specs/tiny/{YYMMDD}-{slug}/` with `spec.md`, `plan.md` and a one-phase `tasks.md`;
+  `feature.json` does not change), asks to confirm, then runs
+  it with phase-runner (coder → finisher per task, one CHECKS, one REVIEW, one commit).
+  Large work → `/spec-prepare`
 - **time-log** — record task execution time
 - **todo-plans** — todo-plan management
 - **squash-commits** — squash a branch into one commit vs a base; `--scope=phase` makes one commit per phase (used by phase-runner)

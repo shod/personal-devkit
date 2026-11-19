@@ -7,7 +7,7 @@ description: >-
   Use /review for uncommitted changes, /review T012 for one task, or
   /review --base=<branch> for a branch or a whole phase. phase-runner calls it once per
   phase. Reports only, never changes code.
-argument-hint: "[task-id] [--base=<ref>] [--phase=<N>] [--out=<path>] [--auto]"
+argument-hint: "[task-id] [--base=<ref>] [--phase=<N>] [--out=<path>] [--feature-dir=<path>] [--auto]"
 allowed-tools: Bash(git *) Read Grep Glob Write Skill
 metadata:
   author: olegs
@@ -33,6 +33,7 @@ Stack rules come from other skills, listed in `.claude-project.json` → `review
 | `--base=<ref>` | Review `git diff <ref>...HEAD`. phase-runner uses this mode. |
 | `--phase=<N>` | Phase number. Used only for the report title and file name. |
 | `--out=<path>` | Write the report to this file. Without it, print the report only. |
+| `--feature-dir=<path>` | The folder with `spec.md` and `tasks.md`. phase-runner passes it. |
 | `--auto` | Do not ask questions. Use defaults and continue. |
 
 ## Step 1: Find the scope
@@ -51,7 +52,8 @@ Stack rules come from other skills, listed in `.claude-project.json` → `review
 ## Step 2: Load the context
 
 1. Find the feature folder.
-   Read `.specify/feature.json` first. If it does not exist, use the folder of the `tasks.md`
+   If `--feature-dir` is present, use it and go to item 2.
+   Otherwise read `.specify/feature.json` first. If it does not exist, use the folder of the `tasks.md`
    that holds the task, or the folder that matches the branch name.
 2. Read `spec.md`, `plan.md` and `tasks.md` from the feature folder, if they exist.
    For a phase review, note the tasks of that phase.

@@ -26,6 +26,10 @@ Read these values from the prompt:
 
 If one of these values is missing → **STOP** and report which value is missing.
 
+Optional:
+- **TASKS_PATH** — the path to `tasks.md`. If it is in the prompt, pass it to `task-git`
+  as `--tasks={TASKS_PATH}`. If it is not in the prompt, leave the flag out.
+
 ## Workflow
 
 1. Run `git branch --show-current`.
@@ -34,7 +38,7 @@ If one of these values is missing → **STOP** and report which value is missing
    - If there are no changes → **STOP** and report: "No changes to commit for {TASK_ID}."
 3. Call the **Skill tool**: `task-git` with this argument:
    ```
-   {PHASE_NUM} {TASK_ID} --scope=phase --phase-action=COMMIT --phase-branch={PHASE_BRANCH} --feature-branch={FEATURE_BRANCH} --auto
+   {PHASE_NUM} {TASK_ID} --scope=phase --phase-action=COMMIT --phase-branch={PHASE_BRANCH} --feature-branch={FEATURE_BRANCH} --tasks={TASKS_PATH} --auto
    ```
    If the skill returns an error → **STOP** and report it.
 4. Call the **Skill tool**: `time-log` with this argument:
