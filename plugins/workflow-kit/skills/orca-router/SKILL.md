@@ -158,5 +158,5 @@ and run `node scripts/report-status.mjs` from the project, so the Projects Dashb
 - Workers of the same feature run one at a time (stages are sequential).
 - The router never merges to main/development and never opens an MR/PR.
 - Secrets, tokens and client code never go into flow-log.md or PROJECT_STATUS.md.
-- Work project (dubz, GitLab, Jira): same flow, but the status goes to the work dashboard
+- Work project (GitLab, Jira): same flow, but the status goes to the work dashboard
   (`report-status` target `work`).
