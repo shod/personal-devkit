@@ -6,7 +6,7 @@ description: >-
   the current phase (create → commit → merge) based on git state.
   Supports --scope=phase for branch-per-Phase orchestration (one
   phase/{N}-{feature-slug} branch, one CHECKS run, one merge) driven by phase-runner.
-argument-hint: "<task-id|phase-number> [--scope=task|phase] [--phase=CREATE|COMMIT|MERGE] [--phase-action=CREATE|COMMIT|CHECKS|MERGE] [--phase-branch=<name>] [--auto]"
+argument-hint: "<task-id|phase-number> [--scope=task|phase] [--phase=CREATE|COMMIT|MERGE] [--phase-action=CREATE|COMMIT|CHECKS|MERGE] [--phase-branch=<name>] [--tasks=<path>] [--auto]"
 allowed-tools: Bash PowerShell Read Grep Glob AskUserQuestion
 metadata:
   author: speckit
@@ -310,6 +310,8 @@ is **one commit per phase** on the feature branch. Driven exclusively by
    - Otherwise derive it: read `phase_branch_prefix` from `.claude-project.json` `paths` (e.g. `phase/`), take **FEATURE_SLUG** = basename of the spec directory holding `tasks.md` (`specs/007-bookings-export-fields` → `007-bookings-export-fields`; lowercase, every character outside `[a-z0-9._-]` → `-`, collapse repeats, trim `-`), and set **PHASE_BRANCH** = `{phase_branch_prefix}{PHASE_NUM}-{FEATURE_SLUG}` (e.g. `phase/3-007-bookings-export-fields`).
    - The slug makes the name **unique per feature**, so a phase branch from another spec can never be picked up by mistake. Never fall back to the bare `{phase_branch_prefix}{PHASE_NUM}` form — that is the legacy naming and is not created or written to anymore.
 7. Find FEATURE_DIR (`specs/*` containing `tasks.md`) for command/spec resolution — and, when the slug has to be derived (6b), as its source.
+   If `--tasks=<path>` was passed, FEATURE_DIR is the folder of that file (for example a
+   `tiny-fix` plan in `specs/tiny/{YYMMDD}-{slug}/`). Do not search `specs/*` then.
 
 ### Phase action CREATE — create the phase branch (once)
 

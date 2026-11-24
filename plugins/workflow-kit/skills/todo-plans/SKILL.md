@@ -1,12 +1,12 @@
 ---
 name: todo-plans
-description: Read and write project plans and open questions to C:\Work\Dubz\todo-plans.md. Use this skill whenever the user wants to: add a task, note, or open question to the plan file; view or list existing items; mark something as done; or manage the todo-plans list. Trigger on phrases like "add to plans", "add to todo", "what's in our plans", "mark as done", "write down a question", "check plans".
+description: Read and write project plans and open questions to <WORK_DIR>\todo-plans.md. Use this skill whenever the user wants to: add a task, note, or open question to the plan file; view or list existing items; mark something as done; or manage the todo-plans list. Trigger on phrases like "add to plans", "add to todo", "what's in our plans", "mark as done", "write down a question", "check plans".
 model: haiku
 ---
 
 # Todo Plans Skill
 
-Manages the project plan file at `C:\Work\Dubz\todo-plans.md`.
+Manages the project plan file at `<WORK_DIR>\todo-plans.md`.
 
 All responses to the user must be in English.
 
@@ -14,7 +14,7 @@ All responses to the user must be in English.
 
 ### Read / List
 When the user wants to see current plans or questions:
-1. Read `C:\Work\Dubz\todo-plans.md`
+1. Read `<WORK_DIR>\todo-plans.md`
 2. Display contents in a readable format, highlighting open items (`- [ ]`) and done items (`- [x]`)
 
 ### Add item
